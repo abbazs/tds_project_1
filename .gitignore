@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.mypy_cache/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.env
