@@ -1,187 +1,21 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Optional, Dict
-import base64
-import json
-import asyncio
-from datetime import datetime
-import httpx
-import time
-from collections import deque
-import hashlib
 import random
+from datetime import datetime
+from typing import Dict, Optional, List
 
-# Pydantic Settings Configuration
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
-    
-    # Hugging Face Configuration
-    huggingface_api_key: Optional[str] = Field(default=None, description="Hugging Face API key")
-    
-    # Model Selection (choose based on your needs)
-    primary_model: str = Field(
-        default="Qwen/Qwen2.5-7B-Instruct",
-        description="Primary model to use"
-    )
-    fallback_model: str = Field(
-        default="microsoft/DialoGPT-medium", 
-        description="Fallback model if primary fails"
-    )
-    
-    # Available models for different use cases:
-    # - "Qwen/Qwen2.5-7B-Instruct" (excellent quality)
-    # - "microsoft/DialoGPT-medium" (conversational)
-    # - "meta-llama/Llama-2-7b-chat-hf" (good general purpose)
-    # - "mistralai/Mistral-7B-Instruct-v0.1" (fast and good)
-    # - "google/flan-t5-large" (instruction following)
-    
-    # Rate Limiting (Conservative for free tier)
-    hf_tier: str = Field(default="free", description="HF tier: free, pro, or enterprise")
-    requests_per_minute: int = Field(default=12, description="Requests per minute")
-    requests_per_hour: int = Field(default=800, description="Requests per hour")
-    cooldown_seconds: float = Field(default=3.0, description="Cooldown between requests")
-    
-    # Generation Parameters
-    max_new_tokens: int = Field(default=200, description="Maximum tokens to generate")
-    temperature: float = Field(default=0.3, description="Generation temperature")
-    top_p: float = Field(default=0.9, description="Top-p sampling")
-    repetition_penalty: float = Field(default=1.1, description="Repetition penalty")
-    
-    # Application Configuration
-    app_host: str = Field(default="0.0.0.0", description="Application host")
-    app_port: int = Field(default=8000, description="Application port")
-    debug: bool = Field(default=False, description="Debug mode")
-    
-    # Caching and Optimization
-    enable_response_cache: bool = Field(default=True, description="Enable response caching")
-    cache_size: int = Field(default=500, description="Maximum cache entries")
-    api_timeout: int = Field(default=30, description="API timeout in seconds")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
-# Initialize settings
-settings = Settings()
-
-# Rate Limiter
-class HFRateLimiter:
-    def __init__(self):
-        self.minute_requests = deque()
-        self.hour_requests = deque()
-        self.last_request = 0
-    
-    async def can_make_request(self) -> tuple[bool, str]:
-        now = time.time()
-        
-        # Clean old requests
-        while self.minute_requests and now - self.minute_requests[0] > 60:
-            self.minute_requests.popleft()
-        while self.hour_requests and now - self.hour_requests[0] > 3600:
-            self.hour_requests.popleft()
-        
-        # Check limits
-        if len(self.minute_requests) >= settings.requests_per_minute:
-            wait_time = 60 - (now - self.minute_requests[0])
-            return False, f"minute_limit_exceeded_wait_{wait_time:.0f}s"
-        
-        if len(self.hour_requests) >= settings.requests_per_hour:
-            return False, "hour_limit_exceeded"
-        
-        # Check cooldown
-        if now - self.last_request < settings.cooldown_seconds:
-            wait_time = settings.cooldown_seconds - (now - self.last_request)
-            await asyncio.sleep(wait_time)
-        
-        # Record request
-        current_time = time.time()
-        self.minute_requests.append(current_time)
-        self.hour_requests.append(current_time)
-        self.last_request = current_time
-        
-        return True, "ok"
-    
-    def get_stats(self) -> Dict:
-        now = time.time()
-        # Clean for accurate stats
-        while self.minute_requests and now - self.minute_requests[0] > 60:
-            self.minute_requests.popleft()
-        while self.hour_requests and now - self.hour_requests[0] > 3600:
-            self.hour_requests.popleft()
-        
-        return {
-            "requests_this_minute": len(self.minute_requests),
-            "requests_this_hour": len(self.hour_requests),
-            "minute_limit": settings.requests_per_minute,
-            "hour_limit": settings.requests_per_hour,
-            "minute_remaining": settings.requests_per_minute - len(self.minute_requests),
-            "hour_remaining": settings.requests_per_hour - len(self.hour_requests)
-        }
-
-# Response Cache
-class ResponseCache:
-    def __init__(self, max_size: int = 500):
-        self.cache = {}
-        self.max_size = max_size
-        self.access_order = deque()
-    
-    def _get_key(self, question: str) -> str:
-        return hashlib.md5(question.lower().strip().encode()).hexdigest()[:16]
-    
-    def get(self, question: str) -> Optional[str]:
-        key = self._get_key(question)
-        if key in self.cache:
-            # Update access order (LRU)
-            self.access_order.remove(key)
-            self.access_order.append(key)
-            return self.cache[key]
-        return None
-    
-    def set(self, question: str, response: str):
-        key = self._get_key(question)
-        
-        # Remove oldest if at capacity
-        if len(self.cache) >= self.max_size and key not in self.cache:
-            oldest_key = self.access_order.popleft()
-            del self.cache[oldest_key]
-        
-        self.cache[key] = response
-        if key in self.access_order:
-            self.access_order.remove(key)
-        self.access_order.append(key)
-
-# Global instances
-rate_limiter = HFRateLimiter()
-response_cache = ResponseCache(settings.cache_size) if settings.enable_response_cache else None
-
-# Pydantic models
-class FileAttachment(BaseModel):
-    filename: str
-    content: str  # base64 encoded
-    content_type: str
-
-class QuestionRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=800, description="The student's question")
-    attachments: Optional[List[FileAttachment]] = Field(default=None, description="Optional file attachments")
-
-class LinkResponse(BaseModel):
-    url: str
-    text: str
-
-class AnswerResponse(BaseModel):
-    answer: str
-    links: List[LinkResponse] = Field(default_factory=list)
-    source: str = Field(default="ai", description="Response source: ai, cache, or fallback")
-    model_used: Optional[str] = Field(default=None, description="Model that generated the response")
+from app.config import settings
+from app.utils import get_service_health, ResponseCache
+from app.models import AnswerResponse, QuestionRequest, LinkResponse
 
 # FastAPI app
 app = FastAPI(
-    title="TDS Virtual TA (Hugging Face API)",
-    description="Virtual Teaching Assistant using Hugging Face Inference API",
-    version="1.0.0"
+    title="TDS Virtual TA (Local Qwen Model)",
+    description="Virtual Teaching Assistant using local Qwen2.5-0.5B-Instruct model",
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -192,6 +26,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize response cache
+response_cache = (
+    ResponseCache(max_size=settings.cache_size)
+    if settings.enable_response_cache
+    else None
+)
+
+# Initialize local Qwen model and tokenizer
+model = AutoModelForCausalLM.from_pretrained(
+    settings.model_name,
+    torch_dtype=torch.float16 if settings.use_fp16 else torch.float32,
+    device_map="auto",
+)
+tokenizer = AutoTokenizer.from_pretrained(settings.model_name)
+
 # Course knowledge base
 KNOWLEDGE_BASE = {
     "ai_model": {
@@ -200,19 +49,19 @@ KNOWLEDGE_BASE = {
         "links": [
             {
                 "url": "https://discourse.onlinedegree.iitm.ac.in/t/ai-model-requirements/123",
-                "text": "Official AI model requirements for TDS assignments"
+                "text": "Official AI model requirements for TDS assignments",
             }
         ]
     },
     "fastapi": {
         "keywords": ["fastapi", "api", "deploy", "deployment", "uvicorn", "railway"],
-        "answer": "For FastAPI deployment on Railway/Render: 1) Create `requirements.txt` with dependencies 2) Use `uvicorn main:app --host 0.0.0.0 --port $PORT` 3) Set environment variables in platform dashboard 4) Add CORS middleware 5) Include health check endpoint",
+        "answer": "To deploy a FastAPI application to Railway: 1) Create a `requirements.txt` with dependencies (e.g., `fastapi`, `uvicorn`). 2) Add a `Procfile` with `web: uvicorn main:app --host 0.0.0.0 --port $PORT`. 3) Optionally, use a `Dockerfile` for custom builds. 4) Push code to a GitHub repository. 5) Create a Railway project, link the repository, and set environment variables in the dashboard. 6) Add CORS middleware and a `/health` endpoint for monitoring.",
         "links": [
             {
                 "url": "https://discourse.onlinedegree.iitm.ac.in/t/fastapi-deployment/456",
                 "text": "FastAPI deployment guide and best practices"
             }
-        ]
+        ],
     },
     "pydantic": {
         "keywords": ["pydantic", "validation", "field", "basemodel", "error"],
@@ -220,330 +69,245 @@ KNOWLEDGE_BASE = {
         "links": [
             {
                 "url": "https://discourse.onlinedegree.iitm.ac.in/t/pydantic-errors/789",
-                "text": "Common Pydantic validation errors and solutions"
+                "text": "Common Pydantic validation errors and solutions",
             }
-        ]
-    }
+        ],
+    },
 }
 
-async def call_huggingface_api(question: str, model_name: str = None) -> Optional[Dict]:
-    """Call Hugging Face Inference API with rate limiting"""
-    
-    # Check if API key is configured
-    if not settings.huggingface_api_key:
-        print("❌ No Hugging Face API key configured")
-        return None
-    
-    # Check rate limits
-    can_proceed, status = await rate_limiter.can_make_request()
-    if not can_proceed:
-        print(f"🚦 Rate limit: {status}")
-        return None
-    
-    model_to_use = model_name or settings.primary_model
-    
+def generate_local_model_response(question: str) -> Dict[str, str]:
+    """Generate response using local Qwen model"""
     try:
-        headers = {
-            "Authorization": f"Bearer {settings.huggingface_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # Create optimized prompt based on model type
-        if "qwen" in model_to_use.lower():
-            # Qwen chat format
-            prompt = f"""<|im_start|>system
-You are a helpful Teaching Assistant for the "Tools in Data Science" course at IIT Madras. Provide concise, practical answers to student questions about Python, FastAPI, Pydantic, Machine Learning, and related topics.
+        # Create optimized prompt for Qwen model
+        prompt = (
+            "<|im_start|>system\n"
+            "You are a helpful Teaching Assistant for the \"Tools in Data Science\" course at IIT Madras. "
+            "Provide concise, practical answers to student questions about Python, FastAPI, Pydantic, "
+            "Machine Learning, and related topics. Focus on specific deployment steps when asked about "
+            "deploying applications, especially to platforms like Railway. Avoid generic setup instructions "
+            "unless relevant. For questions unrelated to the course, respond with: 'This question is outside the scope of the Tools in Data Science course. Please ask about Python, FastAPI, Pydantic, Machine Learning, or related topics.' "
+            "Do not include the system or user prompt in your response.\n\n"
+            "Key course requirements:\n"
+            "- Use gpt-3.5-turbo-0125 for AI assignments (not gpt-4o-mini)\n"
+            "- Include MIT LICENSE in GitHub repositories\n"
+            "- Follow Python best practices<|im_end|>\n"
+            f"<|im_start|>user\n{question}<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
 
-Key course requirements:
-- Use gpt-3.5-turbo-0125 for AI assignments (not gpt-4o-mini)
-- Include MIT LICENSE in GitHub repositories
-- Follow Python best practices<|im_end|>
-<|im_start|>user
-{question}<|im_end|>
-<|im_start|>assistant"""
-        
-        elif "llama" in model_to_use.lower():
-            # Llama chat format
-            prompt = f"""<s>[INST] You are a helpful Teaching Assistant for a Data Science course. 
+        # Tokenize input
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-Student question: {question}
+        # Generate response
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=settings.max_new_tokens,
+            temperature=settings.temperature,
+            top_p=settings.top_p,
+            repetition_penalty=settings.repetition_penalty,
+            do_sample=True,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
 
-Provide a helpful, concise answer (2-3 sentences): [/INST]"""
-        
+        # Decode response
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Extract only the assistant's response
+        assistant_response = generated_text
+
+        # Remove the prompt (system and user parts)
+        prompt_end_marker = "<|im_start|>assistant"
+        if prompt_end_marker in generated_text:
+            assistant_response = generated_text.split(prompt_end_marker)[-1]
         else:
-            # Generic format for other models
-            prompt = f"""You are a helpful Teaching Assistant for a Data Science course.
+            # Fallback: remove everything up to the question
+            question_marker = f"user\n{question}"
+            if question_marker in generated_text:
+                assistant_response = generated_text.split(question_marker)[-1]
+                if "<|im_start|>assistant" in assistant_response:
+                    assistant_response = assistant_response.split("<|im_start|>assistant")[-1]
 
-Student question: {question}
+        # Remove any trailing markers
+        if "<|im_end|>" in assistant_response:
+            assistant_response = assistant_response.split("<|im_end|>")[0]
 
-Provide a helpful, concise answer:"""
-        
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": settings.max_new_tokens,
-                "temperature": settings.temperature,
-                "top_p": settings.top_p,
-                "repetition_penalty": settings.repetition_penalty,
-                "do_sample": True,
-                "return_full_text": False
-            },
-            "options": {
-                "wait_for_model": True,
-                "use_cache": False
-            }
+        # Clean up whitespace
+        assistant_response = assistant_response.strip()
+
+        # Ensure non-empty response
+        if not assistant_response:
+            print(f"⚠️ Empty response from {settings.model_name}")
+            return {}
+
+        print(f"✅ Got response from {settings.model_name}")
+        return {
+            "answer": assistant_response,
+            "model": settings.model_name,
+            "source": "local_model",
         }
-        
-        url = f"https://api-inference.huggingface.co/models/{model_to_use}"
-        
-        async with httpx.AsyncClient(timeout=settings.api_timeout) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    generated_text = result[0].get("generated_text", "").strip()
-                    if generated_text:
-                        print(f"✅ Got response from {model_to_use}")
-                        return {
-                            "answer": generated_text,
-                            "model": model_to_use,
-                            "source": "ai"
-                        }
-            
-            elif response.status_code == 429:
-                print(f"⚠️ API rate limited for {model_to_use}")
-            elif response.status_code == 503:
-                print(f"⚠️ Model {model_to_use} loading, try again later")
-            else:
-                print(f"❌ API error {response.status_code} for {model_to_use}")
-                
-    except httpx.TimeoutException:
-        print(f"⏰ Timeout calling {model_to_use}")
+
     except Exception as e:
-        print(f"❌ Error calling {model_to_use}: {e}")
-    
-    return None
+        print(f"❌ Error generating response with {settings.model_name}: {e}")
+        return {}
 
 def generate_rule_based_response(question: str) -> Dict:
     """Generate rule-based response using knowledge base"""
     question_lower = question.lower()
-    
+
     # Find best match
     best_match = None
     best_score = 0
-    
+
     for category, data in KNOWLEDGE_BASE.items():
         score = 0
-        for keyword in data["keywords"]:
-            if keyword in question_lower:
+        keywords: List[str] = data["keywords"]
+        for keyword in keywords:
+            if keyword.lower() in question_lower:
                 score += len(keyword)
-        
+
         if score > best_score:
             best_score = score
             best_match = data
-    
+
     if best_match:
+        links = best_match.get("links", [])
         return {
             "answer": best_match["answer"],
-            "links": [LinkResponse(**link) for link in best_match.get("links", [])],
-            "source": "rule_based"
+            "links": links,
+            "source": "rule_based",
         }
-    
-    # Default response
-    default_answers = [
-        "I'm here to help with your TDS course questions! For specific technical issues, please provide more details about your problem.",
-        "That's an interesting question! For the most accurate help, could you share more context about what you're trying to achieve?",
-        "I can help with Python, FastAPI, Pydantic, Machine Learning, and other TDS topics. Please be more specific about your question.",
-    ]
-    
+
+    # Default response for off-topic questions
     return {
-        "answer": random.choice(default_answers),
-        "links": [LinkResponse(
-            url="https://discourse.onlinedegree.iitm.ac.in/c/tools-data-science",
-            text="TDS Discourse forum for detailed discussions"
-        )],
-        "source": "fallback"
+        "answer": "This question is outside the scope of the Tools in Data Science course. Please ask about Python, FastAPI, Pydantic, Machine Learning, or related topics.",
+        "links": [
+            {
+                "url": "https://discourse.onlinedegree.iitm.ac.in/c/tools-data-science",
+                "text": "TDS Discourse forum for detailed discussions"
+            }
+        ],
+        "source": "fallback",
     }
 
 async def get_smart_response(question: str) -> Dict:
     """Get response using smart fallback strategy"""
-    
     # Check cache first
     if response_cache:
         cached_response = response_cache.get(question)
         if cached_response:
             print("📋 Using cached response")
-            return {
-                "answer": cached_response,
-                "links": [],
-                "source": "cache"
-            }
-    
-    # Try AI only if API key is configured
-    if settings.huggingface_api_key:
-        # Try primary model
-        ai_response = await call_huggingface_api(question, settings.primary_model)
-        if ai_response:
-            # Cache successful response
-            if response_cache:
-                response_cache.set(question, ai_response["answer"])
-            return ai_response
-        
-        # Try fallback model
-        print(f"🔄 Trying fallback model: {settings.fallback_model}")
-        ai_response = await call_huggingface_api(question, settings.fallback_model)
-        if ai_response:
-            if response_cache:
-                response_cache.set(question, ai_response["answer"])
-            return ai_response
-    else:
-        print("⚠️ No API key configured, using rule-based responses only")
-    
-    # Use rule-based response
-    print("🔄 Using rule-based response")
+            return {"answer": cached_response, "links": [], "source": "cache"}
+
+    # Check knowledge base first
+    rule_response = generate_rule_based_response(question)
+    if rule_response["source"] == "rule_based":
+        print("📚 Using rule-based response from knowledge base")
+        if response_cache:
+            response_cache.set(question, rule_response["answer"])
+        return rule_response
+
+    # Use default rule-based response for off-topic questions
+    if rule_response["source"] == "fallback":
+        print("🔄 Using default rule-based response")
+        if response_cache:
+            response_cache.set(question, rule_response["answer"])
+        return rule_response
+
+    # Try local model as fallback (only for TDS-related questions)
+    model_response = generate_local_model_response(question)
+    if model_response:
+        if response_cache:
+            response_cache.set(question, model_response["answer"])
+        return model_response
+
+    # Final fallback
+    print("🔄 Using default rule-based response")
     return generate_rule_based_response(question)
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application"""
-    print("🚀 TDS Virtual TA with Hugging Face API starting...")
-    
-    # Check configuration
-    if settings.huggingface_api_key:
-        print(f"🤖 Primary model: {settings.primary_model}")
-        print(f"🔄 Fallback model: {settings.fallback_model}")
-        print(f"🚦 Rate limits: {settings.requests_per_minute}/min, {settings.requests_per_hour}/hour")
-    else:
-        print("⚠️  WARNING: No Hugging Face API key configured!")
-        print("🔄 Running in rule-based mode only")
-    
+    print("🚀 TDS Virtual TA with Local Qwen Model starting...")
+    print(f"🤖 Model: {settings.model_name}")
     print(f"📋 Caching: {'enabled' if settings.enable_response_cache else 'disabled'}")
+    print(f"🔧 FP16: {'enabled' if settings.use_fp16 else 'disabled'}")
     print("✅ Service started successfully!")
 
 @app.get("/")
 async def root():
     """Root endpoint"""
-    health = get_service_health()
-    
+    health = get_service_health(settings, response_cache)
+
     return {
-        "message": "TDS Virtual TA with Hugging Face API",
+        "message": "TDS Virtual TA with Local Qwen Model",
         "status": health["status"],
         "version": "1.0.0",
-        "ai_provider": "Hugging Face Inference API" if settings.huggingface_api_key else "Rule-based only",
-        "primary_model": settings.primary_model if settings.huggingface_api_key else None,
-        "fallback_model": settings.fallback_model if settings.huggingface_api_key else None,
+        "ai_provider": "Local Qwen Model",
+        "model": settings.model_name,
         "capabilities": health["capabilities"],
         "issues": health["issues"] if health["issues"] else None,
         "warnings": health["warnings"] if health["warnings"] else None,
-        "rate_limiting": {
-            "tier": settings.hf_tier,
-            "requests_per_minute": settings.requests_per_minute,
-            "requests_per_hour": settings.requests_per_hour
-        } if settings.huggingface_api_key else None,
         "features": {
             "response_caching": settings.enable_response_cache,
-            "smart_fallback": True,
-            "rule_based_backup": True
+            "rule_based_backup": True,
         },
         "endpoints": {
             "answer": "/api/",
             "health": "/health",
-            "rate_status": "/rate-status",
-            "docs": "/docs"
-        }
+            "docs": "/docs",
+        },
     }
 
 @app.post("/api/", response_model=AnswerResponse)
 async def answer_question(request: QuestionRequest):
     """Main API endpoint to answer student questions"""
     try:
-        # Get smart response (tries AI, falls back to rules)
+        # Get smart response
         response_data = await get_smart_response(request.question)
-        
+
         return AnswerResponse(
             answer=response_data["answer"],
             links=response_data.get("links", []),
             source=response_data.get("source", "unknown"),
-            model_used=response_data.get("model")
+            model_used=response_data.get("model"),
         )
-        
+
     except Exception as e:
+        print(f"❌ Emergency fallback triggered: {e}")
         # Emergency fallback
         emergency_response = generate_rule_based_response(request.question)
         return AnswerResponse(
-            answer=f"{emergency_response['answer']}\n\n*Note: Experienced a technical issue but provided a helpful response based on course knowledge.*",
+            answer="{}\n\n*Note: Experienced a technical issue but provided a helpful response based on course knowledge.*".format(emergency_response['answer']),
             links=emergency_response.get("links", []),
-            source="emergency_fallback"
+            source="emergency_fallback",
         )
-
-@app.get("/rate-status")
-async def get_rate_status():
-    """Get current rate limiting status"""
-    stats = rate_limiter.get_stats()
-    
-    return {
-        "rate_limiting": stats,
-        "tier": settings.hf_tier,
-        "recommendations": {
-            "can_make_request": stats["minute_remaining"] > 0 and stats["hour_remaining"] > 0,
-            "approaching_minute_limit": stats["minute_remaining"] < 3,
-            "approaching_hour_limit": stats["hour_remaining"] < 50,
-            "suggested_wait_minutes": max(0, (60 - stats["minute_remaining"])) if stats["minute_remaining"] == 0 else 0
-        },
-        "cache_stats": {
-            "enabled": settings.enable_response_cache,
-            "size": len(response_cache.cache) if response_cache else 0,
-            "max_size": settings.cache_size
-        }
-    }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    health = get_service_health()
-    stats = rate_limiter.get_stats()
-    
+    health = get_service_health(settings, response_cache)
+
     return {
         "status": health["status"],
         "timestamp": datetime.now().isoformat(),
         "issues": health["issues"],
         "warnings": health["warnings"],
-        "ai_provider": "Hugging Face Inference API" if settings.huggingface_api_key else "Rule-based only",
+        "ai_provider": "Local Qwen Model",
         "configuration": {
-            "api_key_configured": bool(settings.huggingface_api_key),
-            "primary_model": settings.primary_model if settings.huggingface_api_key else None,
-            "fallback_model": settings.fallback_model if settings.huggingface_api_key else None
-        },
-        "rate_limiting": {
-            "minute_remaining": stats["minute_remaining"],
-            "hour_remaining": stats["hour_remaining"],
-            "healthy": stats["minute_remaining"] > 0 and stats["hour_remaining"] > 0
-        } if settings.huggingface_api_key else {
-            "status": "not_applicable",
-            "reason": "no_api_key"
+            "model": settings.model_name,
+            "use_fp16": settings.use_fp16,
         },
         "caching": {
             "enabled": settings.enable_response_cache,
-            "entries": len(response_cache.cache) if response_cache else 0
+            "entries": len(response_cache.cache) if response_cache else 0,
         },
         "capabilities": health["capabilities"],
-        "fallback_systems": {
-            "rule_based": True,
-            "emergency_response": True
-        },
-        "setup_instructions": [
-            "Set HUGGINGFACE_API_KEY environment variable",
-            "Get API key from: https://huggingface.co/settings/tokens",
-            "Restart the service after setting the key"
-        ] if not settings.huggingface_api_key else None
+        "fallback_systems": {"rule_based": True, "emergency_response": True},
     }
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        app,
-        host=settings.app_host,
-        port=settings.app_port,
-        reload=settings.debug
+        app, host=settings.app_host, port=settings.app_port, reload=settings.debug
     )
