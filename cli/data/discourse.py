@@ -641,7 +641,9 @@ async def scrape_discourse(config: ScrapingConfig):
         await client.close()
 
 
-@click.group()
+@click.group(
+    name="discourse", help="Discourse scraper with separated AI analysis"
+)
 def cli():
     """Discourse scraper with separated AI analysis."""
     click.echo("Welcome to the Discourse Scraper CLI!")

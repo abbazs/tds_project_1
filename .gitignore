@@ -9,3 +9,11 @@ __pycache__/
 *.env
 config.json
 discourse_secret.json
+.idea/
+*.egg
+*.egg-info/
+*.log
+*.sqlite3
+*.db
+*.DS_Store
+# Local configuration files
