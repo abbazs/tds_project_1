@@ -1,0 +1,21 @@
+{
+  "topic_id": 166647,
+  "topic_title": "I have doubt in Q10",
+  "topic_url": "https://discourse.onlinedegree.iitm.ac.in/t/166647",
+  "posts": [
+    {
+      "username": "23f1001806",
+      "created_at": "2025-02-09T14:51:52.566000Z",
+      "content": "I have doubt in question 10 to convert pdf to markdown  \nI am not getting correct markdown  \n[@pds\\_staff](/u/pds_staff)",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/166647/1",
+      "images": []
+    },
+    {
+      "username": "22f3000092",
+      "created_at": "2025-02-09T18:15:12.582000Z",
+      "content": "Try using the pymupdf4llm Library  \npip install pymupdf4llm\n\nimport pymupdf4llm  \nmd\\_text = pymupdf4llm.to\\_markdown(\u201cinput.pdf\u201d)\n\nimport pathlib  \npathlib.Path(\u201coutput.md\u201d).write\\_bytes(md\\_text.encode())\n\nimport pymupdf4llm  \nllama\\_reader = pymupdf4llm.LlamaMarkdownReader()  \nllama\\_docs = llama\\_reader.load\\_data(\u201cinput.pdf\u201d)",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/166647/2",
+      "images": []
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "topic_id": 168537,
+  "topic_title": "ROE timing overlaps with Java OPPE",
+  "topic_url": "https://discourse.onlinedegree.iitm.ac.in/t/168537",
+  "posts": [
+    {
+      "username": "Nelson",
+      "created_at": "2025-02-26T11:45:53.368000Z",
+      "content": "On 2nd March, I have both Java OPPE and TDS ROE.  \nMy Java OPPE timing is: 9:30 to 11:00 AM  \nMY TDS ROE timing is: 10:30 to 11:15 AM\n\nA minimum gap of one hour is recommended.\n\nI have written to support.\n\n[@carlton](/u/carlton) Please look into this.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/168537/1",
+      "images": []
+    },
+    {
+      "username": "23f2004752",
+      "created_at": "2025-02-26T13:09:32.246000Z",
+      "content": "I guess roe time is 13:00 to 13:45 and it is same for all , also check calender for the same.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/168537/2",
+      "images": []
+    },
+    {
+      "username": "carlton",
+      "created_at": "2025-02-26T13:27:47.811000Z",
+      "content": "[@Nelson](/u/nelson)  \nTDS ROE is at 1pm in the afternoon for everyone.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/168537/3",
+      "images": []
+    },
+    {
+      "username": "Nelson",
+      "created_at": "2025-03-03T07:27:48.677000Z",
+      "content": "Apologies for the confusion. I realized that the issue was due to different time zones\u2014Java OPPE displayed IST (GMT +5:30), while TDS ROE showed AST (GMT +3). On the same day, I intended to delete my post on Discourse but couldn\u2019t find it, as it was still in draft mode. So, I deleted it. However, I was surprised to see the post today.\n\nI regret any inconvenience caused.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/168537/5",
+      "images": []
+    }
+  ]
+}

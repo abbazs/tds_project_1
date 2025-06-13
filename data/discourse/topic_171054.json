@@ -1,0 +1,49 @@
+{
+  "topic_id": 171054,
+  "topic_title": "Successfully Completed TDS Project 2 \u2013 Seeking Feedback & Demonstration Session",
+  "topic_url": "https://discourse.onlinedegree.iitm.ac.in/t/171054",
+  "posts": [
+    {
+      "username": "23f2005702",
+      "created_at": "2025-03-27T11:40:53.676000Z",
+      "content": "[@s.anand](/u/s.anand) [@carlton](/u/carlton) [@Jivraj](/u/jivraj) [@Saransh\\_Saini](/u/saransh_saini)\n\nI would like to share that we have successfully completed **TDS Project 2**, solving **46/57** cases dynamically via **Azure after deployment**! We also tested it with our friends\u2019 **GA questions**, and it\u2019s working as expected.\n\nThis project was a **team effort** by me and two friends [ [@lakshaygarg654](/u/lakshaygarg654) and [@23f2004637](/u/23f2004637) ], and we are thrilled with the results post-deployment.\n\nI would love the opportunity to **demonstrate our project** to **TA and Anand Sir** in a **Google Meet session** on **March 31st** (since I have OPPE on the 29th and 30th).\n\nIf you can spare some time for a quick look at our project, it would be awesome! Looking forward to your response.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/1",
+      "images": []
+    },
+    {
+      "username": "Saransh_Saini",
+      "created_at": "2025-03-27T11:53:27.567000Z",
+      "content": "Hi [@23f2005702](/u/23f2005702) [@lakshaygarg654](/u/lakshaygarg654)  \nFirstly, congratulations on your success. And surely you can demonstrate your project. It would be great if you demonstrate it in today\u2019s live session at 8pm. Otherwise next week is all about project 2 discussion.",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/2",
+      "images": []
+    },
+    {
+      "username": "23f2005702",
+      "created_at": "2025-03-27T11:57:18.945000Z",
+      "content": "Thank you for the opportunity! However, I won\u2019t be able to present the project in a public session as my **Azure API URL would be exposed**, and since it incurs **costs per usage**, I need to keep it secure.\n\nI\u2019d prefer a **private meet** to demonstrate the project. Please let me know if that can be arranged. Looking forward to discussing it!",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/3",
+      "images": []
+    },
+    {
+      "username": "21f2000709",
+      "created_at": "2025-03-27T12:27:37.331000Z",
+      "content": "That\u2019s amazing [@23f2005702](/u/23f2005702) ,  \nso far I have completed till 44 Qs and deployed it on azure too !! Mine is solving around 40 correctly out of these 44 (checked with another user\u2019s login on the portal).",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/4",
+      "images": []
+    },
+    {
+      "username": "lakshaygarg654",
+      "created_at": "2025-03-27T12:44:46.440000Z",
+      "content": "[@Saransh\\_Saini](/u/saransh_saini)  \nI can\u2019t join the meet since I\u2019m out of station and don\u2019t have PC access. I also have other coursework, so I\u2019ll be available for a meet from the 31st onwards",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/5",
+      "images": []
+    },
+    {
+      "username": "Aryxn",
+      "created_at": "2025-03-31T07:29:24.499000Z",
+      "content": "Congrats for your project mate!  \nJust wanted to ask how did you frame your questions for the Graded Assignments? Cause that will help me complete mine.  \nThanks in advance",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/171054/6",
+      "images": []
+    }
+  ]
+}

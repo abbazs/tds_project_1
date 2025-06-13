@@ -3,12 +3,15 @@ name = "tds-project-1"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13.3"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.12",
+    "google-generativeai>=0.8.5",
+    "markdownify>=1.1.0",
     "pydantic>=2.11.5",
     "pydantic-ai>=0.2.12",
     "pydantic-settings>=2.9.1",
+    "rich-click>=1.8.9",
 ]
 
 [dependency-groups]
@@ -18,3 +21,59 @@ dev = [
     "mypy>=1.16.0",
     "ruff>=0.11.12",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where    = ["."]
+include  = ["discourse*"]
+exclude  = ["app*", "data*"]
+
+[project.scripts]
+discourse = "discourse:cli"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "N", "W",
+  "B", "C4", "PIE", "T20", "RET", "SIM", "ARG",
+]
+ignore = [
+  "E501",  # line-too-long (formatter handles this)
+  "B904", "F404", "F401", "RET507", "PIE790",
+]
+
+[tool.ruff.format]
+preview = false  # if you’re using Ruff ≥0.4’s new formatter
+
+[tool.black]
+line-length     = 80
+target-version  = ["py312"]
+
+[tool.isort]
+profile                 = "black"   # matches Black’s style rules
+line_length             = 80        # keep all tools consistent
+force_single_line       = true      # one symbol per import statement
+split_on_trailing_comma = true      # also split parenthesised imports
+combine_as_imports      = false     # never merge multiple `as` clauses
+multi_line_output       = 3         # (optional) Black-friendly vertical layout
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true

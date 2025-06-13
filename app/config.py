@@ -2,8 +2,6 @@
 Configuration settings using Pydantic Settings
 """
 
-from typing import Optional
-
 from pydantic_settings import BaseSettings
 
 

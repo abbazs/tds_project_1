@@ -4,16 +4,16 @@ Utility classes for caching, rule-based engine, and health checking
 
 import hashlib
 import json
-import re
 import time
-from collections import OrderedDict, deque
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from collections import OrderedDict
+from datetime import datetime
+from datetime import timedelta
+from typing import Any
 
 import httpx
 import psutil
 
-from .models import AnswerResponse, Link
+from .models import AnswerResponse
 
 
 class ResponseCache:
@@ -22,8 +22,8 @@ class ResponseCache:
     def __init__(self, max_size: int = 1000, ttl: int = 3600):
         self.max_size = max_size
         self.ttl = ttl
-        self.cache: OrderedDict[str, Dict] = OrderedDict()
-        self.access_times: Dict[str, datetime] = {}
+        self.cache: OrderedDict[str, dict] = OrderedDict()
+        self.access_times: dict[str, datetime] = {}
         self.hits = 0
         self.misses = 0
 
@@ -35,16 +35,18 @@ class ResponseCache:
         """Check if cache entry is expired"""
         if key not in self.access_times:
             return True
-        return datetime.now() - self.access_times[key] > timedelta(seconds=self.ttl)
+        return datetime.now() - self.access_times[key] > timedelta(
+            seconds=self.ttl
+        )
 
     def _evict_expired(self):
         """Remove expired entries"""
-        expired_keys = [k for k in self.cache.keys() if self._is_expired(k)]
+        expired_keys = [k for k in self.cache if self._is_expired(k)]
         for key in expired_keys:
             del self.cache[key]
             del self.access_times[key]
 
-    def get(self, question: str) -> Optional[AnswerResponse]:
+    def get(self, question: str) -> AnswerResponse | None:
         """Get cached response for question"""
         key = self._generate_key(question)
 
@@ -85,7 +87,7 @@ class ResponseCache:
         if len(self.cache) % 100 == 0:
             self._evict_expired()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics"""
         total_requests = self.hits + self.misses
         hit_rate = self.hits / total_requests if total_requests > 0 else 0
@@ -278,7 +280,7 @@ Set these in Railway dashboard:
                     "basemodel",
                     "field",
                 ],
-                "answer": """
+                "answer": r"""
 **Pydantic Validation and Common Issues:**
 
 Pydantic is essential for data validation in modern Python applications!
@@ -324,13 +326,13 @@ class UserModel(BaseModel):
     email: str
     password: str
     confirm_password: str
-    
+
     @validator('email')
     def email_must_be_valid(cls, v):
         if '@' not in v or '.' not in v:
             raise ValueError('Invalid email format')
         return v.lower()
-    
+
     @root_validator
     def passwords_match(cls, values):
         pw1, pw2 = values.get('password'), values.get('confirm_password')
@@ -348,7 +350,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_key: str
     port: int = 8000
-    
+
     class Config:
         env_file = ".env"
         env_prefix = "APP_"  # Variables like APP_DATABASE_URL
@@ -359,7 +361,7 @@ class Settings(BaseSettings):
 class APIResponse(BaseModel):
     user_id: int = Field(alias="userId")
     full_name: str = Field(alias="fullName")
-    
+
     class Config:
         allow_population_by_field_name = True  # Accept both field name and alias
 ```
@@ -610,7 +612,10 @@ __pycache__/
 • Sensitive data: Never commit API keys or passwords
                 """,
                 "links": [
-                    {"url": "https://git-scm.com/doc", "text": "Git Documentation"},
+                    {
+                        "url": "https://git-scm.com/doc",
+                        "text": "Git Documentation",
+                    },
                     {
                         "url": "https://github.com/git-guides",
                         "text": "GitHub Git Guides",
@@ -624,7 +629,7 @@ __pycache__/
             },
         }
 
-    def match_question(self, question: str) -> Optional[Dict]:
+    def match_question(self, question: str) -> dict | None:
         """Match question against knowledge base using keyword scoring"""
         question_lower = question.lower()
 
@@ -656,7 +661,9 @@ __pycache__/
                     best_match = {
                         **data,
                         "topic": topic,
-                        "confidence": min(0.95, normalized_score / 15),  # Cap at 95%
+                        "confidence": min(
+                            0.95, normalized_score / 15
+                        ),  # Cap at 95%
                         "matched_keywords": keyword_matches,
                         "raw_score": score,
                     }
@@ -677,7 +684,7 @@ class HealthChecker:
         self.error_count = 0
         self.last_error = None
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get comprehensive health status"""
         current_time = time.time()
         uptime = current_time - self.start_time
@@ -687,7 +694,7 @@ class HealthChecker:
             memory_info = psutil.virtual_memory()
             cpu_percent = psutil.cpu_percent(interval=0.1)
             disk_usage = psutil.disk_usage("/")
-        except Exception as e:
+        except Exception:
             # Fallback if psutil fails
             memory_info = None
             cpu_percent = 0
@@ -725,14 +732,16 @@ class HealthChecker:
         if disk_usage:
             health_data.update(
                 {
-                    "disk_usage_percent": (disk_usage.used / disk_usage.total) * 100,
+                    "disk_usage_percent": (disk_usage.used / disk_usage.total)
+                    * 100,
                     "disk_free": f"{disk_usage.free / 1024 / 1024 / 1024:.1f}GB",
                 }
             )
 
         # Generate warnings
         warnings = self._get_warnings(
-            memory_info.percent if memory_info else 0, cpu_percent if cpu_percent else 0
+            memory_info.percent if memory_info else 0,
+            cpu_percent if cpu_percent else 0,
         )
         health_data["warnings"] = warnings
 
@@ -754,14 +763,15 @@ class HealthChecker:
 
         if days > 0:
             return f"{days}d {hours}h {minutes}m {seconds}s"
-        elif hours > 0:
+        if hours > 0:
             return f"{hours}h {minutes}m {seconds}s"
-        elif minutes > 0:
+        if minutes > 0:
             return f"{minutes}m {seconds}s"
-        else:
-            return f"{seconds}s"
+        return f"{seconds}s"
 
-    def _get_warnings(self, memory_percent: float, cpu_percent: float) -> List[str]:
+    def _get_warnings(
+        self, memory_percent: float, cpu_percent: float
+    ) -> list[str]:
         """Generate system warnings based on metrics"""
         warnings = []
 
@@ -798,21 +808,22 @@ class AIpipeClient:
     def __init__(self, settings):
         self.settings = settings
         self.client = httpx.AsyncClient(
-            timeout=settings.api_timeout, headers={"User-Agent": "TDS-Virtual-TA/1.0.0"}
+            timeout=settings.api_timeout,
+            headers={"User-Agent": "TDS-Virtual-TA/1.0.0"},
         )
         self.request_count = 0
         self.error_count = 0
 
     async def generate_response(
-        self, question: str, files: Optional[List] = None
-    ) -> Dict[str, Any]:
+        self, question: str, files: list | None = None
+    ) -> dict[str, Any]:
         """Generate response using AIpipe API with educational context"""
 
         self.request_count += 1
 
         # Prepare the prompt with TDS context
-        system_prompt = """You are a helpful teaching assistant for the "Tools in Data Science" course at IIT Madras. 
-        
+        system_prompt = """You are a helpful teaching assistant for the "Tools in Data Science" course at IIT Madras.
+
         Your role is to:
         - Provide clear, educational answers focused on data science tools and programming
         - Include practical examples and code snippets when helpful
@@ -820,16 +831,14 @@ class AIpipeClient:
         - Explain concepts step-by-step for better understanding
         - Suggest best practices and common pitfalls to avoid
         - Relate answers to real-world data science applications
-        
+
         Keep your responses informative but concise, and always encourage learning and exploration."""
 
         user_prompt = f"Student question: {question}"
 
         # Add file context if files are provided
         if files:
-            file_info = (
-                f"\n\nNote: Student has attached {len(files)} file(s) to this question."
-            )
+            file_info = f"\n\nNote: Student has attached {len(files)} file(s) to this question."
             user_prompt += file_info
 
         # Prepare request payload according to AIpipe API format
@@ -863,8 +872,12 @@ class AIpipeClient:
                 "links": links,
                 "model_name": self.settings.model_name,
                 "metadata": {
-                    "tokens_used": result.get("usage", {}).get("total_tokens", 0),
-                    "model_version": result.get("model", self.settings.model_name),
+                    "tokens_used": result.get("usage", {}).get(
+                        "total_tokens", 0
+                    ),
+                    "model_version": result.get(
+                        "model", self.settings.model_name
+                    ),
                     "response_time_ms": response.elapsed.total_seconds() * 1000,
                     "file_count": len(files) if files else 0,
                 },
@@ -885,14 +898,14 @@ class AIpipeClient:
             self.error_count += 1
             raise Exception(f"Failed to generate AI response: {str(e)}")
 
-    def _extract_answer_from_response(self, result: Dict) -> str:
+    def _extract_answer_from_response(self, result: dict) -> str:
         """Extract answer from various possible response formats"""
         # Try different possible response structures
         if "choices" in result and len(result["choices"]) > 0:
             choice = result["choices"][0]
             if "message" in choice and "content" in choice["message"]:
                 return choice["message"]["content"]
-            elif "text" in choice:
+            if "text" in choice:
                 return choice["text"]
 
         # Try direct content field
@@ -906,7 +919,7 @@ class AIpipeClient:
         # Fallback
         return "I couldn't generate a response at this time. Please try rephrasing your question."
 
-    def _generate_relevant_links(self, question: str) -> List[Dict[str, str]]:
+    def _generate_relevant_links(self, question: str) -> list[dict[str, str]]:
         """Generate relevant links based on question keywords"""
         question_lower = question.lower()
         links = []
@@ -953,11 +966,17 @@ class AIpipeClient:
             for word in ["deploy", "deployment", "railway", "hosting"]
         ):
             links.append(
-                {"url": "https://docs.railway.app/", "text": "Railway Documentation"}
+                {
+                    "url": "https://docs.railway.app/",
+                    "text": "Railway Documentation",
+                }
             )
 
         # Version Control
-        if any(word in question_lower for word in ["git", "github", "version control"]):
+        if any(
+            word in question_lower
+            for word in ["git", "github", "version control"]
+        ):
             links.append(
                 {"url": "https://git-scm.com/doc", "text": "Git Documentation"}
             )
@@ -984,7 +1003,9 @@ class AIpipeClient:
             )
 
         # Jupyter and Notebooks
-        if any(word in question_lower for word in ["jupyter", "notebook", "ipynb"]):
+        if any(
+            word in question_lower for word in ["jupyter", "notebook", "ipynb"]
+        ):
             links.append(
                 {
                     "url": "https://jupyter.org/documentation",
@@ -994,7 +1015,10 @@ class AIpipeClient:
 
         # Always include course resources
         links.append(
-            {"url": "https://courses.iitm.ac.in", "text": "IIT Madras Course Portal"}
+            {
+                "url": "https://courses.iitm.ac.in",
+                "text": "IIT Madras Course Portal",
+            }
         )
 
         # Remove duplicates while preserving order
@@ -1007,7 +1031,7 @@ class AIpipeClient:
 
         return unique_links
 
-    async def check_health(self) -> Dict[str, Any]:
+    async def check_health(self) -> dict[str, Any]:
         """Check AIpipe service health with minimal request"""
         try:
             # Simple health check - try to generate a minimal response
@@ -1035,13 +1059,12 @@ class AIpipeClient:
                     "error_count": self.error_count,
                     "error_rate": self.error_count / max(self.request_count, 1),
                 }
-            else:
-                return {
-                    "status": "unhealthy",
-                    "status_code": response.status_code,
-                    "error": f"AIpipe service returned status {response.status_code}",
-                    "response_time_ms": round(response_time, 2),
-                }
+            return {
+                "status": "unhealthy",
+                "status_code": response.status_code,
+                "error": f"AIpipe service returned status {response.status_code}",
+                "response_time_ms": round(response_time, 2),
+            }
 
         except httpx.TimeoutException:
             return {
@@ -1056,7 +1079,10 @@ class AIpipeClient:
                 "error": f"HTTP error: {e.response.status_code}",
             }
         except Exception as e:
-            return {"status": "unhealthy", "error": f"Health check failed: {str(e)}"}
+            return {
+                "status": "unhealthy",
+                "error": f"Health check failed: {str(e)}",
+            }
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -1066,7 +1092,7 @@ class AIpipeClient:
         """Async context manager exit - clean up HTTP client"""
         await self.client.aclose()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get client statistics"""
         return {
             "total_requests": self.request_count,

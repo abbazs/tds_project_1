@@ -7,3 +7,5 @@ __pycache__/
 *.pkl
 *.db
 *.env
+config.json
+discourse_secret.json

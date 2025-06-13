@@ -6,26 +6,36 @@ Main FastAPI Application
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI
+from fastapi import File
+from fastapi import HTTPException
+from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .models import AnswerResponse, HealthResponse, Link, QuestionRequest
-from .utils import AIpipeClient, HealthChecker, ResponseCache, RuleBasedEngine
+from .models import AnswerResponse
+from .models import HealthResponse
+from .models import Link
+from .models import QuestionRequest
+from .utils import AIpipeClient
+from .utils import HealthChecker
+from .utils import ResponseCache
+from .utils import RuleBasedEngine
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 # Initialize settings and components
 settings = Settings()
 cache = (
-    ResponseCache(max_size=settings.cache_max_size) if settings.enable_cache else None
+    ResponseCache(max_size=settings.cache_max_size)
+    if settings.enable_cache
+    else None
 )
 rule_engine = RuleBasedEngine()
 health_checker = HealthChecker()
@@ -94,7 +104,7 @@ async def root():
 
 @app.post("/api/", response_model=AnswerResponse)
 async def ask_question(
-    request: QuestionRequest, files: Optional[List[UploadFile]] = File(None)
+    request: QuestionRequest, files: list[UploadFile] | None = File(None)
 ):
     """
     Main API endpoint for student questions
@@ -156,7 +166,7 @@ async def ask_question(
         logger.error(f"❌ Error processing question: {str(e)}")
 
         # Fallback to default message
-        fallback_response = AnswerResponse(
+        return AnswerResponse(
             answer=(
                 "I apologize, but I'm experiencing technical difficulties right now. "
                 "Here are some general resources for the TDS course:\n\n"
@@ -167,9 +177,13 @@ async def ask_question(
                 "Please try asking your question again in a few moments."
             ),
             links=[
-                Link(url="https://courses.iitm.ac.in", text="IIT Madras Course Portal"),
                 Link(
-                    url="https://github.com/sanand0/aipipe", text="AIpipe Documentation"
+                    url="https://courses.iitm.ac.in",
+                    text="IIT Madras Course Portal",
+                ),
+                Link(
+                    url="https://github.com/sanand0/aipipe",
+                    text="AIpipe Documentation",
                 ),
             ],
             source="fallback",
@@ -177,8 +191,6 @@ async def ask_question(
             processing_time=time.time() - start_time,
             metadata={"error": str(e), "fallback": True},
         )
-
-        return fallback_response
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -223,5 +235,9 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "app:app", host=settings.host, port=settings.port, reload=True, log_level="info"
+        "app:app",
+        host=settings.host,
+        port=settings.port,
+        reload=True,
+        log_level="info",
     )

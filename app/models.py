@@ -3,9 +3,11 @@ Pydantic models for API requests and responses
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel
+from pydantic import Field
+from pydantic import validator
 
 
 class Link(BaseModel):
@@ -32,15 +34,16 @@ class QuestionRequest(BaseModel):
         max_length=2000,
         description="Student's question about the TDS course",
     )
-    context: Optional[str] = Field(
+    context: str | None = Field(
         None, max_length=1000, description="Additional context for the question"
     )
-    student_id: Optional[str] = Field(
-        None, description="Optional student identifier for personalized responses"
+    student_id: str | None = Field(
+        None,
+        description="Optional student identifier for personalized responses",
     )
 
     @validator("question")
-    def question_must_not_be_empty(cls, v):
+    def question_must_not_be_empty(self, v):
         if not v.strip():
             raise ValueError("Question cannot be empty or just whitespace")
         return v.strip()
@@ -59,7 +62,9 @@ class AnswerResponse(BaseModel):
     """Response model for answers"""
 
     answer: str = Field(..., description="The generated answer to the question")
-    links: List[Link] = Field(default=[], description="Relevant reference links")
+    links: list[Link] = Field(
+        default=[], description="Relevant reference links"
+    )
     source: str = Field(
         ..., description="Source of the answer (rule_based, ai_model, fallback)"
     )
@@ -69,11 +74,12 @@ class AnswerResponse(BaseModel):
     processing_time: float = Field(
         ..., description="Time taken to process the request in seconds"
     )
-    metadata: Dict[str, Any] = Field(
+    metadata: dict[str, Any] = Field(
         default={}, description="Additional metadata about the response"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.now, description="When the response was generated"
+        default_factory=datetime.now,
+        description="When the response was generated",
     )
 
     class Config:
@@ -101,12 +107,14 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Overall system status")
     version: str = Field(..., description="Application version")
     uptime: float = Field(..., description="System uptime in seconds")
-    capabilities: List[str] = Field(..., description="List of system capabilities")
-    diagnostics: Dict[str, Any] = Field(
+    capabilities: list[str] = Field(
+        ..., description="List of system capabilities"
+    )
+    diagnostics: dict[str, Any] = Field(
         ..., description="Detailed diagnostic information"
     )
-    warnings: List[str] = Field(default=[], description="Any system warnings")
-    model_info: Dict[str, Any] = Field(
+    warnings: list[str] = Field(default=[], description="Any system warnings")
+    model_info: dict[str, Any] = Field(
         ..., description="Information about the AI model"
     )
 

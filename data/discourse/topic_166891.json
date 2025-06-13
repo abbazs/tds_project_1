@@ -1,0 +1,21 @@
+{
+  "topic_id": 166891,
+  "topic_title": "Regarding Github Mail For Project",
+  "topic_url": "https://discourse.onlinedegree.iitm.ac.in/t/166891",
+  "posts": [
+    {
+      "username": "23f1001236",
+      "created_at": "2025-02-13T02:19:53.249000Z",
+      "content": "Is it important to use an IITM mail ID in GitHub for the project?  \n[@carlton](/u/carlton)",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/166891/1",
+      "images": []
+    },
+    {
+      "username": "carlton",
+      "created_at": "2025-02-14T05:12:27.093000Z",
+      "content": "Currently we do not have any explicit policy regarding requiring IITM email as the github profile name or the github repo owner.\n\nWe DO however require you to use your IITM email when submitting the project submission form.\n\nWe are clarifying with operations at the moment if this arrangement satisfies their requirements. If it changes we will make a general announcement via email, portal and discourse.\n\n(we do not expect the current requirements of github to change)\n\nKind regards",
+      "url": "https://discourse.onlinedegree.iitm.ac.in/t/166891/2",
+      "images": []
+    }
+  ]
+}
