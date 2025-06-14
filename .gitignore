@@ -17,3 +17,4 @@ discourse_secret.json
 *.db
 *.DS_Store
 # Local configuration files
+embeddings_old/
