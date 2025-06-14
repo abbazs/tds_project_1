@@ -16,21 +16,13 @@ def save_embeddings(chunks: list[EmbeddingChunk], output_path: Path) -> None:
     if not valid_chunks:
         print_error("No valid embeddings to save")
         return
-    # Collect all unique metadata keys
-    metadata_keys = set()
-    for chunk in valid_chunks:
-        metadata_keys.update(chunk.metadata.keys())
 
     # Build arrays for all metadata fields
     arrays = {
         "embeddings": np.array([c.embedding for c in valid_chunks], dtype=np.float32),
         "texts": np.array([c.text for c in valid_chunks], dtype=object),
+        "urls": np.array([c.url for c in valid_chunks], dtype=object),
     }
-
-    for key in metadata_keys:
-        arrays[key] = np.array(
-            [c.metadata.get(key, "") for c in valid_chunks], dtype=object
-        )
 
     np.savez_compressed(output_path, **arrays)  # type: ignore
 

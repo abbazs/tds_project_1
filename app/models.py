@@ -15,5 +15,5 @@ class Settings(BaseSettings):
 
 class EmbeddingChunk(BaseModel):
     text: str
-    metadata: dict[str, Any]
+    url: str
     embedding: Optional[list[float]] = None

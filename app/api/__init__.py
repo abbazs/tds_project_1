@@ -7,12 +7,14 @@ from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pydantic import Field
-from app.image_confext import OpenAIImageAnalyzer
+
 from app.embedder import OpenAIEmbedder
+from app.image_confext import OpenAIImageAnalyzer
 from app.models import Settings
+
 app = FastAPI(title="TDS May 2025 Project 1 Q&A API", version="1.0.0")
 
-settings=Settings() # type: ignore
+settings = Settings()  # type: ignore
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -49,14 +51,17 @@ class QuestionResponse(BaseModel):
     links: list[LinkResponse]
 
 
-async def process_question(
-    question: str, image_data: Optional[bytes] = None
-) -> QuestionResponse:
+async def process_question(request: QuestionRequest) -> QuestionResponse:
     """Process student question and return structured response."""
 
-    if image_data:
-        aii=OpenAIImageAnalyzer(api_key=settings.api_key)
-        context = aii.analyze_image(image_data.decode('utf-8'))
+    if request.image:
+        aii = OpenAIImageAnalyzer(api_key=settings.api_key)
+        context = aii.analyze_image(request.image.decode("utf-8"))
+    question = f"{request.question} {context}"
+    aie = OpenAIEmbedder(api_key=settings.api_key)
+    embeddings = aie.embed_text(question)
+    if not embeddings:
+        raise HTTPException(status_code=500, detail="Failed to generate embeddings")
 
     # Example processing logic - replace with your actual implementation
     if "gpt" in question.lower() and "proxy" in question.lower():
@@ -94,16 +99,8 @@ async def answer_question(request: QuestionRequest):
     }
     ```
     """
-
-    image_data = None
-    if request.image:
-        try:
-            image_data = base64.b64decode(request.image)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid base64 image data")
-
     try:
-        return process_question(request.question, image_data)
+        return process_question(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 

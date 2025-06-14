@@ -87,11 +87,7 @@ async def process_json_file(
                 chunks.append(
                     EmbeddingChunk(
                         text=chunk_text,
-                        metadata={
-                            "topic_title": topic_data.topic_title,
-                            "post_url": post.url,
-                            "content": post.content,
-                        },
+                        url=post.url,
                         embedding=embedding,
                     )
                 )

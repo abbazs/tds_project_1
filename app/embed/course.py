@@ -16,6 +16,7 @@ from rich.progress import SpinnerColumn
 from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
+from slugify import slugify
 
 from app.embed.split import URLAwareTextSplitter
 from app.embed.utils import concatenate_embeddings
@@ -122,11 +123,12 @@ async def process_file(
                 progress.update(section_task, advance=1)
             continue
 
-        topic_path = " > ".join(section.headers) if section.headers else "Root"
-        full_text = f"""Topic: {topic_path}
-{section.content}"""
+        if len(section.headers) > 0:
+            url = f"https://tds.s-anand.net/#{file_path.stem}?id={slugify(section.headers[-1])}"
+        else:
+            url = f"https://tds.s-anand.net/#{file_path.stem}"
 
-        text_chunks = splitter.split_text(full_text)
+        text_chunks = splitter.split_text(section.content)
         total_chunks = len(text_chunks)
         if total_chunks > 1:
             chunk_task = progress.add_task(
@@ -140,11 +142,11 @@ async def process_file(
                 chunks.append(
                     EmbeddingChunk(
                         text=chunk_text,
-                        metadata={"topic_path": topic_path},
+                        url=url,
                         embedding=embedding,
                     )
                 )
-
+                console.print(f"[dim]{url}[/dim]")
             if total_chunks > 1:
                 progress.update(chunk_task, advance=1)
         if progress and section_task:
