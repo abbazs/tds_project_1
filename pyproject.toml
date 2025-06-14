@@ -6,19 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
  "fastapi>=0.115.12",
- "google-generativeai>=0.8.5",
- "h5py>=3.14.0",
- "langchain>=0.3.25",
  "markdownify>=1.1.0",
  "numpy>=2.3.0",
  "openai>=1.82.1",
- "pandas>=2.3.0",
- "pyarrow>=20.0.0",
  "pydantic>=2.11.5",
- "pydantic-ai>=0.2.12",
  "pydantic-settings>=2.9.1",
  "rich-click>=1.8.9",
  "toml>=0.10.2",
+ "uvicorn>=0.34.2",
 ]
 
 [dependency-groups]
@@ -31,14 +26,18 @@ dev = [
  "types-toml>=0.10.8.20240310",
 ]
 
+[tool.setuptools.packages.find]
+where = [ ".",]
+include = [ "app*",]
+
 [build-system]
 requires = [ "setuptools>=61.0", "wheel",]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-cli = "cli:cli"
-embed = "cli.embed:cli"
-data = "cli.data:cli"
+cli = "app:cli"
+embed = "app.embed:cli"
+data = "app.data:cli"
 
 [tool.ruff]
 target-version = "py312"
@@ -84,6 +83,3 @@ ignore = [ "E501", "B904", "F404", "F401", "RET507", "PIE790",]
 known-first-party = [ "cli",]
 force-single-line = true
 
-[tool.setuptools.packages.find]
-where = [ ".",]
-include = [ "cli*",]

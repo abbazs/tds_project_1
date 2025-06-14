@@ -13,16 +13,16 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from cli.image_confext import AIImageAnalyzer
-from cli.models import Settings
-from cli.utils import print_important
-from cli.utils import print_success
-from cli.utils import print_warning
+from app.image_confext import OpenAIImageAnalyzer
+from app.models import Settings
+from app.utils import print_important
+from app.utils import print_success
+from app.utils import print_warning
 
 console = Console()
 
 
-class AIImage(AIImageAnalyzer):
+class AIImage(OpenAIImageAnalyzer):
     def __init__(self, api_key: str) -> None:
         """Initialize AIImage with Google Generative AI client."""
         super().__init__(api_key)

@@ -1,7 +1,7 @@
 from typing import Any
 from typing import Optional
 
-from anthropic import BaseModel
+from pydantic import BaseModel
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict

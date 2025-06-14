@@ -4,8 +4,8 @@ from collections import deque
 
 from openai import AsyncOpenAI
 
-from cli.utils import print_error
-from cli.utils import print_warning
+from app.utils import print_error
+from app.utils import print_warning
 
 
 class OpenAIEmbedder:

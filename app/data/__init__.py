@@ -1,7 +1,7 @@
 import rich_click as click
 
-from cli.data import course
-from cli.data import discourse
+from app.data import course
+from app.data import discourse
 
 
 @click.group(name="scrape", help="Scrapping cli")

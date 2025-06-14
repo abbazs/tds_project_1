@@ -1,7 +1,7 @@
 import rich_click as click
 
-from cli.embed import course
-from cli.embed import discourse
+from app.embed import course
+from app.embed import discourse
 
 
 @click.group(name="embed", help="Embedding cli")

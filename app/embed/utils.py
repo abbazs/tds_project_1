@@ -2,8 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
-from cli.models import EmbeddingChunk
-from cli.utils import print_error
+from app.models import EmbeddingChunk
+from app.utils import print_error
 
 
 def save_embeddings(chunks: list[EmbeddingChunk], output_path: Path) -> None:

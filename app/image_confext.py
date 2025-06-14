@@ -8,9 +8,9 @@ from rich.console import Console
 console = Console()
 
 
-class AIImageAnalyzer:
+class OpenAIImageAnalyzer:
     def __init__(self, api_key: str, model="gpt-4o-mini", rpm_limit: int = 500):
-        """Initialize AIImageAnalyzer with OpenAI API key and rate limit."""
+        """Initialize OpenAIImageAnalyzer with OpenAI API key and rate limit."""
         self.rmp = rpm_limit
         self.client = AsyncOpenAI(api_key=api_key)
         self.semaphore = asyncio.Semaphore(5)
@@ -20,11 +20,11 @@ class AIImageAnalyzer:
     async def _rate_limit(self) -> None:
         """Rate limiting for OpenAI paid tier."""
         now = time.time()
-        
+
         # Remove requests older than 60 seconds
         while self.request_times and now - self.request_times[0] > 60:
             self.request_times.popleft()
-        
+
         # Check if we're at the limit within the current minute
         if len(self.request_times) >= self.rmp:
             wait_time = 60 - (now - self.request_times[0]) + 0.1
@@ -33,7 +33,7 @@ class AIImageAnalyzer:
             # Clean up again after waiting
             while self.request_times and time.time() - self.request_times[0] > 60:
                 self.request_times.popleft()
-        
+
         self.request_times.append(now)
 
     async def analyze_image(self, image_b64: str) -> str | None:

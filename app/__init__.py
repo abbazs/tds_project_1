@@ -5,12 +5,12 @@ import toml
 from rich.console import Console
 from rich.prompt import Confirm
 
-from cli import data
-from cli import embed
-from cli.utils import error_exit
-from cli.utils import print_success
-from cli.utils import print_table
-from cli.utils import print_warning
+from app import data
+from app import embed
+from app.utils import error_exit
+from app.utils import print_success
+from app.utils import print_table
+from app.utils import print_warning
 
 console = Console()
 

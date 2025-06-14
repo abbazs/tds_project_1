@@ -17,14 +17,14 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from cli.embed.split import URLAwareTextSplitter
-from cli.embed.utils import concatenate_embeddings
-from cli.embed.utils import save_embeddings
-from cli.embedder import OpenAIEmbedder
-from cli.models import EmbeddingChunk
-from cli.models import Settings
-from cli.utils import error_exit
-from cli.utils import print_error
+from app.embed.split import URLAwareTextSplitter
+from app.embed.utils import concatenate_embeddings
+from app.embed.utils import save_embeddings
+from app.embedder import OpenAIEmbedder
+from app.models import EmbeddingChunk
+from app.models import Settings
+from app.utils import error_exit
+from app.utils import print_error
 
 console = Console()
 

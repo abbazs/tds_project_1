@@ -23,8 +23,8 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from cli.image_confext import AIImageAnalyzer
-from cli.models import Settings
+from app.image_confext import OpenAIImageAnalyzer
+from app.models import Settings
 
 console = Console()
 
@@ -292,7 +292,7 @@ class DiscourseClient:
         await self.session.aclose()
 
 
-class AIImage(AIImageAnalyzer):
+class AIImage(OpenAIImageAnalyzer):
     def __init__(self, api_key: str) -> None:
         """Initialize AIImage with Google Generative AI client."""
         super().__init__(api_key)
