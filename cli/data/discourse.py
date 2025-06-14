@@ -1,18 +1,3 @@
-#!/usr/bin/env python3.12
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "httpx>=0.27.0",
-#     "pydantic>=2.8.0",
-#     "pydantic-settings>=2.4.0",
-#     "rich-click>=1.8.0",
-#     "rich>=13.0.0",
-#     "markdownify>=0.11.6",
-#     "google-generativeai>=0.3.0",
-# ]
-# ///
-"""Ultra-efficient Discourse topic scraper with async processing."""
-
 import asyncio
 import base64
 import json
@@ -25,7 +10,6 @@ from urllib.parse import urljoin
 
 import httpx
 import rich_click as click
-from google import generativeai as genai
 from markdownify import markdownify as md
 from pydantic import BaseModel
 from pydantic import Field
@@ -39,15 +23,13 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
+from cli.image_confext import AIImageAnalyzer
+from cli.models import Settings
+
 console = Console()
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8"
-    )
 
-    genai_api_key: str = Field(alias="GENAI_API_KEY")
 
 
 class CookieConfig(BaseModel):
@@ -87,7 +69,7 @@ class ScrapingConfig(BaseModel):
     end_date: str = "2025-04-15"
     output_dir: str = "discourse_data"
     category_id: int = 34
-    genai_api_key: str | None = None
+    api_key: str | None = None
 
 
 def load_config(
@@ -100,15 +82,15 @@ def load_config(
 
         # Get API key from settings only if required for AI commands
         if require_api_key and (
-            "genai_api_key" not in json_data or not json_data["genai_api_key"]
+            "api_key" not in json_data or not json_data["api_key"]
         ):
-            settings = Settings()
-            json_data["genai_api_key"] = settings.genai_api_key
+            settings = Settings() # type: ignore
+            json_data["api_key"] = settings.api_key
 
         config = ScrapingConfig.model_validate(json_data)
 
         # Validate API key is present for AI commands
-        if require_api_key and not config.genai_api_key:
+        if require_api_key and not config.api_key:
             raise click.ClickException(
                 "GENAI_API_KEY required for AI analysis. Set in JSON config or environment."
             )
@@ -310,77 +292,10 @@ class DiscourseClient:
         await self.session.aclose()
 
 
-class AIImageAnalyzer:
-    def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-2.0-flash-lite")
-        self.semaphore = asyncio.Semaphore(2)  # 2 concurrent requests
-        self.request_times = []  # Track for rate limiting
-
-    async def _rate_limit(self):
-        """Rate limiting for free tier (15 RPM)."""
-        now = asyncio.get_event_loop().time()
-        self.request_times = [t for t in self.request_times if now - t < 60]
-
-        if len(self.request_times) >= 14:
-            wait_time = 60 - (now - self.request_times[0]) + 1
-            if wait_time > 0:
-                console.print(
-                    f"[yellow]⏳ AI rate limit: waiting {wait_time:.1f}s[/yellow]"
-                )
-                await asyncio.sleep(wait_time)
-
-        await asyncio.sleep(4.5)  # Base delay for stability
-        self.request_times.append(now)
-
-    async def analyze_image(self, image_b64: str) -> str | None:
-        """Analyze image with AI."""
-        async with self.semaphore:
-            for attempt in range(3):
-                try:
-                    await self._rate_limit()
-
-                    # Extract base64 data
-                    image_data = (
-                        image_b64.split(",")[1]
-                        if "," in image_b64
-                        else image_b64
-                    )
-                    image_bytes = base64.b64decode(image_data)
-
-                    prompt = "Describe this image in 2-3 sentences: main subject, context/setting, and any important text or technical details."
-
-                    response = await asyncio.to_thread(
-                        self.model.generate_content,
-                        [
-                            prompt,
-                            {"mime_type": "image/jpeg", "data": image_bytes},
-                        ],
-                    )
-
-                    return response.text.strip() if response.text else None
-
-                except Exception as e:
-                    error_msg = str(e).lower()
-
-                    if "429" in error_msg or "quota" in error_msg:
-                        wait_time = 15 + (attempt * 10)
-                        console.print(
-                            f"[yellow]⚠️ Rate limited (attempt {attempt + 1}/3), waiting {wait_time}s[/yellow]"
-                        )
-                        await asyncio.sleep(wait_time)
-                        continue
-                    elif "400" in error_msg:
-                        return None
-                    else:
-                        if attempt < 2:
-                            await asyncio.sleep(10 + (attempt * 5))
-                            continue
-                        console.print(
-                            f"[red]❌ AI analysis failed: {str(e)[:80]}[/red]"
-                        )
-                        return None
-            return None
+class AIImage(AIImageAnalyzer):
+    def __init__(self, api_key: str) -> None:
+        """Initialize AIImage with Google Generative AI client."""
+        super().__init__(api_key)
 
     async def download_and_analyze_images(
         self, output_dir: Path, progress: Progress, task_id: int
@@ -644,14 +559,14 @@ async def scrape_discourse(config: ScrapingConfig):
 @click.group(
     name="discourse", help="Discourse scraper with separated AI analysis"
 )
-def cli():
+def cli(): # type: ignore
     """Discourse scraper with separated AI analysis."""
     click.echo("Welcome to the Discourse Scraper CLI!")
 
 
 @cli.command()
 @click.argument("json_file", type=click.Path(exists=True, readable=True))
-def scrape(json_file: str):
+def scrape(json_file: str): # type: ignore
     """Scrape discourse topics (without AI analysis)."""
     config = load_config(json_file, require_api_key=False)
     asyncio.run(scrape_discourse(config))
@@ -659,7 +574,7 @@ def scrape(json_file: str):
 
 @cli.command()
 @click.argument("json_file", type=click.Path(exists=True, readable=True))
-def image_context(json_file: str):
+def image_context(json_file: str): # type: ignore
     """Analyze images with AI and save context back to JSON files."""
     config = load_config(json_file, require_api_key=True)
 
@@ -669,9 +584,9 @@ def image_context(json_file: str):
             f"Output directory {config.output_dir} does not exist. Run 'scrape' first."
         )
 
-    analyzer = AIImageAnalyzer(config.genai_api_key)
+    analyzer = AIImage(config.api_key) # type: ignore
 
-    async def run_analysis():
+    async def run_analysis(): # type: ignore
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -690,7 +605,7 @@ def image_context(json_file: str):
                 task_id, description="[green]✅ AI analysis complete!"
             )
 
-    asyncio.run(run_analysis())
+    asyncio.run(run_analysis()) # type: ignore
 
 
 if __name__ == "__main__":

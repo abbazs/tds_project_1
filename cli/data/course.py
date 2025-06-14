@@ -1,91 +1,31 @@
 import asyncio
 import base64
 import re
-import time
 from pathlib import Path
 
 import rich_click as click
-from google import generativeai as genai
 from pydantic import ValidationError
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    SpinnerColumn,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.progress import BarColumn
+from rich.progress import Progress
+from rich.progress import SpinnerColumn
+from rich.progress import TaskProgressColumn
+from rich.progress import TextColumn
+from rich.progress import TimeElapsedColumn
 
-from cli.utils import print_error, print_important, print_success, print_warning
+from cli.image_confext import AIImageAnalyzer
+from cli.models import Settings
+from cli.utils import print_important
+from cli.utils import print_success
+from cli.utils import print_warning
 
 console = Console()
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-    genai_api_key: str
-
-
-class AIImageAnalyzer:
+class AIImage(AIImageAnalyzer):
     def __init__(self, api_key: str) -> None:
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-2.0-flash-lite")
-        self.semaphore = asyncio.Semaphore(2)
-        self.request_times: list[float] = []
-
-    async def _rate_limit(self) -> None:
-        """Rate limiting for free tier (15 RPM)."""
-        now = time.time()
-        self.request_times = [t for t in self.request_times if now - t < 60]
-
-        if len(self.request_times) >= 14:
-            wait_time = 60 - (now - self.request_times[0]) + 1
-            if wait_time > 0:
-                print_warning(f"AI rate limit: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-
-        await asyncio.sleep(4.5)
-        self.request_times.append(now)
-
-    async def analyze_image(self, image_b64: str) -> str | None:
-        """Analyze image with AI."""
-        async with self.semaphore:
-            for attempt in range(3):
-                try:
-                    await self._rate_limit()
-
-                    image_data = image_b64.split(",")[1] if "," in image_b64 else image_b64
-                    image_bytes = base64.b64decode(image_data)
-
-                    prompt = "Describe this course-related image in 2-3 sentences: main subject, educational context, and any important text or technical details."
-
-                    response = await asyncio.to_thread(
-                        self.model.generate_content,
-                        [prompt, {"mime_type": "image/jpeg", "data": image_bytes}],
-                    )
-
-                    return response.text.strip() if response.text else None
-
-                except Exception as e:
-                    error_msg = str(e).lower()
-
-                    match error_msg:
-                        case msg if "429" in msg or "quota" in msg:
-                            wait_time = 15 + (attempt * 10)
-                            print_warning(f"Rate limited (attempt {attempt + 1}/3), waiting {wait_time}s")
-                            await asyncio.sleep(wait_time)
-                        case msg if "400" in msg:
-                            return None
-                        case _:
-                            if attempt < 2:
-                                await asyncio.sleep(10 + (attempt * 5))
-                                continue
-                            print_error(f"AI analysis failed: {str(e)[:80]}")
-                            return None
-
-            return None
+        """Initialize AIImage with Google Generative AI client."""
+        super().__init__(api_key)
 
     async def process_markdown_file(self, md_file: Path) -> bool:
         """Process single markdown file and insert AI context for local images."""
@@ -194,7 +134,7 @@ class AIImageAnalyzer:
             print_warning("No markdown files with images found")
             return
 
-        progress.update(task_id, total=total_images)
+        progress.update(task_id, total=total_images) # type: ignore
         print_important(f"Found {total_images} images across {len(files_with_images)} markdown files")
         console.print()
 
@@ -222,11 +162,11 @@ def scrape() -> None:
 def image_context(data_dir: Path) -> None:
     """Analyze local images in markdown files with AI and add context."""
     try:
-        settings = Settings()
+        settings = Settings() # type: ignore
     except ValidationError as e:
         raise click.ClickException(f"Configuration error: {e}")
 
-    analyzer = AIImageAnalyzer(settings.genai_api_key)
+    analyzer = AIImage(settings.api_key)
 
     async def run_analysis() -> None:
         with Progress(

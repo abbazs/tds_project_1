@@ -9,8 +9,8 @@ def cli() -> None:
     pass
 
 
-cli.add_command(course.cli)
-cli.add_command(discourse.cli)
+cli.add_command(course.embed, name="course")
+cli.add_command(discourse.embed, name="discourse")
 
 if __name__ == "__main__":
     cli()

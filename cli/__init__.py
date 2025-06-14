@@ -5,8 +5,8 @@ import toml
 from rich.console import Console
 from rich.prompt import Confirm
 
-from cli import embed
 from cli import data
+from cli import embed
 from cli.utils import error_exit
 from cli.utils import print_success
 from cli.utils import print_table
@@ -23,9 +23,7 @@ def cli() -> None:
     pass
 
 
-@cli.command(
-    "self-update", help="Auto-update [project.scripts] in pyproject.toml"
-)
+@cli.command("self-update", help="Auto-update [project.scripts] in pyproject.toml")
 def self_update() -> None:
     root_dir = Path(__file__).resolve().parent.parent
     cli_dir = root_dir / "cli"
@@ -41,9 +39,7 @@ def self_update() -> None:
                 continue
             source = path.read_text(encoding="utf-8")
             lines = [
-                line.strip()
-                for line in source.strip().splitlines()
-                if line.strip()
+                line.strip() for line in source.strip().splitlines() if line.strip()
             ]
 
             if not (

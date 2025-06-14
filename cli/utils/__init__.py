@@ -49,10 +49,7 @@ def print_table(
         )
     for row in rows:
         formatted_row = [str(cell or "") for cell in row]
-        if (
-            status_column is not None
-            and row[status_column].lower() in STATUS_EMOJI
-        ):
+        if status_column is not None and row[status_column].lower() in STATUS_EMOJI:
             formatted_row[status_column] = (
                 f"{STATUS_EMOJI[row[status_column].lower()]} {formatted_row[status_column]}"
             )

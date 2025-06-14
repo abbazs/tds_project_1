@@ -4,10 +4,32 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [ "fastapi>=0.115.12", "google-generativeai>=0.8.5", "markdownify>=1.1.0", "pydantic>=2.11.5", "pydantic-ai>=0.2.12", "pydantic-settings>=2.9.1", "rich-click>=1.8.9", "toml>=0.10.2",]
+dependencies = [
+ "fastapi>=0.115.12",
+ "google-generativeai>=0.8.5",
+ "h5py>=3.14.0",
+ "langchain>=0.3.25",
+ "markdownify>=1.1.0",
+ "numpy>=2.3.0",
+ "openai>=1.82.1",
+ "pandas>=2.3.0",
+ "pyarrow>=20.0.0",
+ "pydantic>=2.11.5",
+ "pydantic-ai>=0.2.12",
+ "pydantic-settings>=2.9.1",
+ "rich-click>=1.8.9",
+ "toml>=0.10.2",
+]
 
 [dependency-groups]
-dev = [ "black>=25.1.0", "isort>=6.0.1", "mypy>=1.16.0", "ruff>=0.11.12",]
+dev = [
+ "black>=25.1.0",
+ "debugpy>=1.8.14",
+ "isort>=6.0.1",
+ "mypy>=1.16.0",
+ "ruff>=0.11.12",
+ "types-toml>=0.10.8.20240310",
+]
 
 [build-system]
 requires = [ "setuptools>=61.0", "wheel",]
