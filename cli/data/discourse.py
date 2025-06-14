@@ -458,7 +458,7 @@ async def scrape_discourse(config: ScrapingConfig):
         return
 
     output_path = Path(config.output_dir)
-    output_path.mkdir(exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     client = DiscourseClient(base_url, config.cookies)
 

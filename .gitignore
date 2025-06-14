@@ -18,3 +18,6 @@ discourse_secret.json
 *.DS_Store
 # Local configuration files
 embeddings_old/
+logs/
+output/
+scraped_data/

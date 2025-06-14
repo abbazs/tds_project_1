@@ -20,12 +20,20 @@ class AIImageAnalyzer:
     async def _rate_limit(self) -> None:
         """Rate limiting for OpenAI paid tier."""
         now = time.time()
-
-        if len(self.request_times) == self.rmp and now - self.request_times[0] < 60:
+        
+        # Remove requests older than 60 seconds
+        while self.request_times and now - self.request_times[0] > 60:
+            self.request_times.popleft()
+        
+        # Check if we're at the limit within the current minute
+        if len(self.request_times) >= self.rmp:
             wait_time = 60 - (now - self.request_times[0]) + 0.1
-            console.print(f"[yellow]⏳ Rate limit: waiting {wait_time:.1f}s[/yellow]")
+            console.print(f"\n[yellow]⏳ Rate limit: waiting {wait_time:.1f}s[/yellow]")
             await asyncio.sleep(wait_time)
-
+            # Clean up again after waiting
+            while self.request_times and time.time() - self.request_times[0] > 60:
+                self.request_times.popleft()
+        
         self.request_times.append(now)
 
     async def analyze_image(self, image_b64: str) -> str | None:
