@@ -17,9 +17,14 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
+from app.embed.classifier import ContentClassifier
+from app.embed.classifier import PostType
 from app.embed.split import URLAwareTextSplitter
 from app.embed.utils import concatenate_embeddings
 from app.embed.utils import save_embeddings
+from app.embed.weighter import AcademicRole
+from app.embed.weighter import RoleKeywordWeighter
+from app.embed.weighter import apply_weighting_to_content
 from app.embedder import OpenAIEmbedder
 from app.models import EmbeddingChunk
 from app.models import Settings
@@ -27,6 +32,30 @@ from app.utils import error_exit
 from app.utils import print_error
 
 console = Console()
+
+
+VIP_WEIGHTS = {
+    "s.anand": 3.0,  # Faculty
+    "carlton": 2.5,  # Instructor
+    "iamprasna": 2.5,  # Instructor
+    "jivraj": 2.0,  # TA
+    "21f3002441": 2.0,  # TA (Suchintika)
+    "hritikroshan_hrm": 2.0,  # TA (Hritik)
+    "saransh_saini": 2.0,  # TA (Saransh)
+    # You can add others if needed
+}
+ROLES = {
+    "s.anand": AcademicRole.FACULTY,
+    "carlton": AcademicRole.INSTRUCTOR,
+    "iamprasna": AcademicRole.INSTRUCTOR,
+    "jivraj": AcademicRole.TA,
+    "21f3002441": AcademicRole.TA,
+    "hritikroshan_hrm": AcademicRole.TA,
+    "saransh_saini": AcademicRole.TA,
+}
+
+CLASSIFIER = ContentClassifier(VIP_WEIGHTS)
+WEIGHTER = RoleKeywordWeighter(VIP_WEIGHTS, ROLES)
 
 
 class PostData(BaseModel):
@@ -74,6 +103,10 @@ async def process_json_file(
             if (img_url := img.get("url")) and (context := img.get("context")):
                 content = content.replace(img_url, f"{img_url}\n[Image: {context}]")
 
+        post_type = CLASSIFIER.classify_post_type(content, post.username)
+        components = WEIGHTER.get_weighting_components(
+            post.username, content, post_type
+        )
         text_chunks = splitter.split_text(content)
         total_chunks = len(text_chunks)
         if total_chunks > 1:
@@ -81,12 +114,17 @@ async def process_json_file(
                 f"  [dim]Embedding {total_chunks} chunks", total=total_chunks
             )
         for _i, chunk_text in enumerate(text_chunks):
-            embedding = await embedder.embed_text(chunk_text)
+            if components.should_apply:
+                weighted_chunk = apply_weighting_to_content(chunk_text, components)
+            else:
+                weighted_chunk = chunk_text
+
+            embedding = await embedder.embed_text(weighted_chunk)
 
             if embedding:
                 chunks.append(
                     EmbeddingChunk(
-                        text=chunk_text,
+                        text=content,
                         url=post.url,
                         embedding=embedding,
                     )

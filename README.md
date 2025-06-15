@@ -1,299 +1,189 @@
-# BGE Search CLI
+# TDS Virtual TA
 
-A production-grade CLI tool for local semantic search using **BAAI/bge-small-en-v1.5** embeddings. This tool allows you to embed documents locally, store them efficiently in NPZ format, and serve them via a FastAPI-powered search engine with cosine similarity ranking.
+A Virtual Teaching Assistant for the IIT Madras BS in Data Science program's "Tools in Data Science" course, designed to answer student questions based on course content and Discourse posts.
 
-## 🚀 Features
+## Overview
 
-- **Local BGE Embeddings**: Uses BAAI/bge-small-en-v1.5 for high-quality text embeddings
-- **Efficient Storage**: NPZ format for fast loading and compact storage
-- **Smart Text Processing**: URL-aware chunking and intelligent text splitting
-- **FastAPI Server**: RESTful API with automatic documentation
-- **Rich CLI Interface**: Beautiful progress bars and status indicators
-- **Type Safety**: Full Pydantic models and type hints
-- **Cosine Similarity Search**: Fast vector similarity search
-- **Structured Results**: Rich metadata and source tracking
+This project fulfills the requirements of Project 1 for the IIT Madras BS in Data Science program's "Tools in Data Science" course (TDS Jan 2025). It provides an API that automatically responds to student questions by leveraging:
 
-## 📦 Installation
+- Course content from [TDS Jan 2025](https://tds.s-anand.net/#/2025-01/) as of April 15, 2025.
+- Discourse posts from the [TDS Knowledge Base](https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34) between January 1, 2025, and April 14, 2025.
 
+The application scrapes data, generates embeddings for semantic search, and uses OpenAI's models to provide concise, relevant answers with source links. It supports text questions with optional base64-encoded image attachments.
+
+## Features
+
+- **Data Scraping**:
+  - Scrapes markdown course content from the `data/course` directory.
+  - Scrapes Discourse posts within a specified date range using authenticated API requests (requires cookies).
+  - Extracts and analyzes images in both course markdown files and Discourse posts using OpenAI's `gpt-4o-mini` vision model.
+
+- **Embedding Generation**:
+  - Processes markdown and JSON data into chunks using a custom `URLAwareTextSplitter`.
+  - Generates embeddings with OpenAI's `text-embedding-3-small` model.
+  - Merges embeddings into a single `embeddings.npz` file for efficient retrieval.
+
+- **API Endpoint**:
+  - Exposes a FastAPI endpoint at `/api/` for POST requests with JSON payloads containing a question and optional base64 image.
+  - Returns a JSON response with a concise answer (under 150 words) and up to three relevant source links within 30 seconds.
+  - Uses semantic search with precomputed embeddings to find relevant passages, enhanced by image context if provided.
+
+- **Rate Limiting**:
+  - Implements robust rate limiting for OpenAI API calls (500 RPM for vision, 3000 RPM for embeddings) to ensure reliability under load.
+
+- **CLI Tools**:
+  - Provides a command-line interface for scraping, embedding, and self-updating the `pyproject.toml` scripts.
+  - Commands include `scrape`, `embed`, and `self-update` for managing data and embeddings.
+
+## Project Structure
+
+```
+app/
+├── __init__.py               # CLI entry point and self-update logic
+├── api/
+│   └── __init__.py           # FastAPI endpoint for question answering
+├── concise_answer.py         # OpenAI-based concise answer generation
+├── data/
+│   ├── __init__.py           # Data scraping CLI
+│   ├── course.py             # Course markdown scraping and image analysis
+│   └── discourse.py          # Discourse post scraping and image analysis
+├── embed/
+│   ├── __init__.py           # Embedding CLI
+│   ├── course.py             # Course content embedding
+│   ├── discourse.py          # Discourse post embedding
+│   ├── split.py              # URL-aware text splitting
+│   └── utils.py              # Embedding utilities
+├── embedder.py               # OpenAI embedding generation
+├── image_context.py          # OpenAI image analysis
+├── models.py                 # Pydantic models for settings and responses
+└── utils/
+    └── __init__.py           # Shared utilities (logging, table printing)
+```
+
+## Installation
+
+1. **Install Astral UV**:
+   Ensure `uv` is installed. Follow instructions at [Astral UV](https://github.com/astral-sh/uv):
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/your-username/tds-virtual-ta.git
+   cd tds-virtual-ta
+   ```
+
+3. **Set Up Virtual Environment and Install Dependencies**:
+   Create a virtual environment and install dependencies using `uv sync`:
+   ```bash
+   uv sync
+   ```
+
+4. **Set Environment Variables**:
+   Create a `.env` file in the project root:
+   ```bash
+   echo "API_KEY=your-openai-api-key" > .env
+   ```
+
+5. **Configure Discourse Scraping**:
+   Create a `config.json` for Discourse scraping:
+   ```json
+   {
+     "cookies": {
+       "_t": "your-t-token",
+       "_forum_session": "your-forum-session"
+     },
+     "start_date": "2025-01-01",
+     "end_date": "2025-04-15",
+     "output_dir": "data/discourse",
+     "category_id": 34,
+   }
+   ```
+
+## Usage
+
+### Scraping Data
+
+1. **Course Content**:
+   - Place course markdown files in `data/course`.
+   - Analyze images in markdown files:
+     ```bash
+     uv run app/data course image-context data/course
+     ```
+
+2. **Discourse Posts**:
+   - Scrape posts:
+     ```bash
+     uv run app/data discourse scrape config.json
+     ```
+   - Analyze images in posts:
+     ```bash
+     uv run app/data discourse image-context config.json
+     ```
+
+### Generating Embeddings
+
+1. **Course Embeddings**:
+   ```bash
+   uv run app/embed course embed --input-dir data/course --output-file embeddings/course.npz
+   ```
+
+2. **Discourse Embeddings**:
+   ```bash
+   uv run app/embed discourse embed --input-dir data/discourse --output-file embeddings/discourse.npz
+   ```
+
+3. **Merge Embeddings**:
+   ```bash
+   uv run app/embed join-npz embeddings/course.npz embeddings/discourse.npz --output embeddings.npz
+   ```
+
+### Running the API
+
+Start the FastAPI server:
 ```bash
-# Clone or create the project
-git clone <repo-url> && cd bge-search-cli
-
-# Install with uv (recommended)
-uv sync
-
-# Or with pip
-pip install -e .
+uv run uvicorn app.api:app --host 0.0.0.0 --port 8000
 ```
 
-## 🎯 Quick Start
-
-### 1. Create Sample Data
-
+Make a sample request:
 ```bash
-# Generate sample documents
-python example_usage.py
+curl -X POST "http://localhost:8000/api/" \
+  -H "Content-Type: application/json" \
+  -d "{\"question\": \"Should I use gpt-4o-mini which AI proxy supports, or gpt3.5 turbo?\", \"image\": \"$(base64 -w0 project-tds-virtual-ta-q1.webp)\"}"
 ```
 
-### 2. Create Embeddings Database
+### Self-Updating CLI
 
+Update `pyproject.toml` scripts:
 ```bash
-# Embed documents from a directory
-cli embed bge create sample_data/ --output embeddings/my_database.npz
-
-# Embed specific files
-cli embed bge create file1.txt file2.md --chunk-size 512 --chunk-overlap 50
-
-# Advanced options
-cli embed bge create docs/ \
-    --output embeddings/docs.npz \
-    --chunk-size 1024 \
-    --chunk-overlap 100 \
-    --device cuda
+uv run app self-update
 ```
 
-### 3. Start Search API
+## Evaluation
 
-```bash
-# Start server with default database
-cli serve start
+The application meets the project requirements:
 
-# Custom configuration
-cli serve start \
-    --host 0.0.0.0 \
-    --port 8080 \
-    --db-path embeddings/my_database.npz \
-    --reload
-```
+- **Pre-requisites**:
+  - Hosted in a public GitHub repository with an MIT `LICENSE` file.
+  - API endpoint publicly accessible.
 
-### 4. Search Your Data
+- **Functionality**:
+  - Handles POST requests with questions and optional images.
+  - Returns JSON responses with answers and links within 30 seconds.
+  - Uses semantic search for relevant sources.
 
-**Via Web Browser:**
-- API Docs: http://127.0.0.1:8000/docs
-- Health Check: http://127.0.0.1:8000/
+- **Bonus**:
+  - Includes a Discourse scraping script (`app/data/discourse.py`) with date range support (+1 mark).
+  - Designed for easy deployment, potentially suitable as an official solution (+2 marks).
 
-**Via curl:**
-```bash
-# Search with GET request
-curl "http://127.0.0.1:8000/search?q=machine%20learning&top_k=3&min_score=0.1"
+To evaluate:
+1. Update `project-tds-virtual-ta-promptfoo.yaml` with your API URL.
+2. Run:
+   ```bash
+   npx -y promptfoo eval --config project-tds-virtual-ta-promptfoo.yaml
+   ```
 
-# Search with POST request
-curl -X POST "http://127.0.0.1:8000/search" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "query": "python programming",
-        "top_k": 5,
-        "min_score": 0.2,
-        "include_metadata": true
-    }'
-```
+## License
 
-**Via Python:**
-```python
-import httpx
-
-async with httpx.AsyncClient() as client:
-    response = await client.get(
-        "http://127.0.0.1:8000/search",
-        params={"q": "data science", "top_k": 3}
-    )
-    results = response.json()
-    print(f"Found {len(results['results'])} results")
-```
-
-## 🔧 CLI Commands
-
-### Embedding Commands
-
-```bash
-# Create embeddings database
-cli embed bge create <input_paths...> [OPTIONS]
-
-Options:
-  --output, -o PATH       Output database file [default: embeddings/bge_database.npz]
-  --chunk-size INT        Text chunk size [default: 512]
-  --chunk-overlap INT     Chunk overlap [default: 50] 
-  --device TEXT           Device for model (auto/cpu/cuda) [default: auto]
-```
-
-### Server Commands
-
-```bash
-# Start API server
-cli serve start [OPTIONS]
-
-Options:
-  --host TEXT           Host to bind server [default: 127.0.0.1]
-  --port INT            Port to bind server [default: 8000]
-  --reload              Enable auto-reload for development
-  --db-path PATH        Path to embedding database [default: embeddings/bge_database.npz]
-```
-
-### Utility Commands
-
-```bash
-# Update project scripts in pyproject.toml
-cli self-update
-
-# Show help
-cli --help
-cli embed --help
-cli serve --help
-```
-
-## 🌐 API Endpoints
-
-### Search Endpoints
-
-**POST /search**
-```json
-{
-    "query": "your search query",
-    "top_k": 5,
-    "min_score": 0.0,
-    "include_metadata": true
-}
-```
-
-**GET /search**
-```
-?q=query&top_k=5&min_score=0.0&include_metadata=true
-```
-
-### Document Management
-
-**GET /documents** - List all documents
-**GET /documents/{doc_id}/chunks** - Get chunks for specific document
-**GET /stats** - Database statistics
-**GET /** - Health check
-
-### Response Format
-
-```json
-{
-    "query": "machine learning",
-    "results": [
-        {
-            "chunk_id": "doc1_chunk_0", 
-            "text": "Machine learning is...",
-            "score": 0.8945,
-            "source_doc_id": "doc1",
-            "chunk_index": 0,
-            "metadata": {...}
-        }
-    ],
-    "total_found": 15,
-    "search_time_ms": 12.5,
-    "model_used": "BAAI/bge-small-en-v1.5"
-}
-```
-
-## 📊 Supported File Types
-
-The tool automatically processes common text files:
-- `.txt` - Plain text
-- `.md` - Markdown
-- `.rst` - reStructuredText  
-- `.py` - Python code
-- `.js` - JavaScript
-- `.html/.css` - Web files
-- `.json/.yaml/.xml` - Data formats
-- `.csv/.tsv` - Tabular data
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-```bash
-# Optional: Set custom database path for server
-export BGE_DATABASE_PATH="/path/to/your/database.npz"
-```
-
-### Model Information
-
-- **Model**: BAAI/bge-small-en-v1.5
-- **Embedding Dimension**: 384
-- **Context Length**: 512 tokens
-- **Languages**: Optimized for English
-- **License**: MIT
-
-## 🏗️ Architecture
-
-```
-📁 cli/
-├── 📄 __init__.py          # Main CLI entry point
-├── 📄 utils.py             # Shared utilities
-├── 📁 models/
-│   ├── 📄 __init__.py      # Model exports
-│   └── 📄 schema.py        # Pydantic data models
-├── 📁 embed/
-│   ├── 📄 __init__.py      # Embed commands
-│   └── 📄 bge.py           # BGE embedding engine
-└── 📁 serve/
-    ├── 📄 __init__.py      # Server commands
-    ├── 📄 api.py           # FastAPI application
-    └── 📄 search.py        # Search engine
-```
-
-## 🔍 How It Works
-
-1. **Text Processing**: Documents are cleaned and split into optimized chunks
-2. **BGE Embedding**: Each chunk is embedded using BAAI/bge-small-en-v1.5
-3. **Storage**: Embeddings saved in compressed NPZ format with metadata
-4. **Search**: Query embeddings compared via cosine similarity
-5. **Ranking**: Results sorted by similarity score with configurable thresholds
-
-## 📈 Performance
-
-- **Embedding Speed**: ~1000 chunks/minute (CPU)
-- **Search Latency**: <50ms for 10K chunks
-- **Storage Efficiency**: ~1.5KB per chunk (384 dims + metadata)
-- **Memory Usage**: ~2GB for 100K chunks
-
-## 🔧 Development
-
-```bash
-# Install dev dependencies
-uv sync --group dev
-
-# Code formatting
-black cli/
-isort cli/
-
-# Type checking  
-mypy cli/
-
-# Linting
-ruff check cli/
-
-# Update project scripts
-cli self-update
-```
-
-## 📝 Examples
-
-See `example_usage.py` for comprehensive usage examples including:
-- Creating sample data
-- Embedding documents
-- Starting the API server
-- Testing all endpoints
-- Python client code
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- [BAAI](https://github.com/FlagOpen/FlagEmbedding) for the excellent BGE embedding models
-- [Sentence Transformers](https://www.sbert.net/) for the embedding infrastructure
-- [FastAPI](https://fastapi.tiangolo.com/) for the excellent API framework
-- [Rich](https://rich.readthedocs.io/) for beautiful CLI interfaces
+This project is licensed under the MIT License. See the `LICENSE` file for details.

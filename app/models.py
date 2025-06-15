@@ -17,3 +17,13 @@ class EmbeddingChunk(BaseModel):
     text: str
     url: str
     embedding: Optional[list[float]] = None
+
+
+class LinkResponse(BaseModel):
+    url: str
+    text: str
+
+
+class QuestionResponse(BaseModel):
+    answer: str
+    links: list[LinkResponse]

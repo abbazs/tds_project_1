@@ -13,8 +13,6 @@ import rich_click as click
 from markdownify import markdownify as md
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
 from rich.console import Console
 from rich.progress import BarColumn
 from rich.progress import Progress
@@ -23,13 +21,10 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from app.image_confext import OpenAIImageAnalyzer
+from app.image_context import OpenAIImageAnalyzer
 from app.models import Settings
 
 console = Console()
-
-
-
 
 
 class CookieConfig(BaseModel):
@@ -68,7 +63,7 @@ class ScrapingConfig(BaseModel):
     start_date: str = "2025-01-01"
     end_date: str = "2025-04-15"
     output_dir: str = "discourse_data"
-    category_id: int = 34
+    category: str = "tds_kb"
     api_key: str | None = None
 
 
@@ -120,7 +115,6 @@ class DiscourseClient:
             try:
                 await asyncio.sleep(self.rate_limit_delay)
                 response = await self.session.get(url, **kwargs)
-
                 if response.status_code == 429:
                     self.rate_limit_delay *= 2
                     wait_time = min(self.rate_limit_delay, 10.0)
@@ -149,36 +143,31 @@ class DiscourseClient:
         raise click.ClickException("Max retries exceeded")
 
     async def get_category_topics(
-        self, category_id: int, page: int = 0
+        self, category: str, after: str, before: str, page: int = 1
     ) -> list[Topic]:
-        """Get topics from category with modern endpoints."""
-        # Try multiple endpoint patterns for compatibility
-        endpoints = [
-            (
-                f"{self.base_url}/c/{category_id}/l/latest.json",
-                {"page": page} if page > 0 else {},
-            ),
-            (
-                f"{self.base_url}/latest.json",
-                (
-                    {"category": category_id, "page": page}
-                    if page > 0
-                    else {"category": category_id}
-                ),
-            ),
-        ]
-
-        for url, params in endpoints:
-            try:
-                data = await self._request_with_retry(url, params=params)
-                break
-            except click.ClickException:
-                continue
-        else:
-            raise click.ClickException("Failed to access category topics")
-
+        """Get topics from category using search API with date filters."""
+        url = f"{self.base_url}/search.json"
+        
+        # Build the search query with proper formatting
+        search_query = f"after:{after} before:{before} #courses:{category} order:latest"
+        
+        params = {
+            "q": search_query,
+            "page": page
+        }
+        
+        data = await self._request_with_retry(url, params=params)
+        
+        # Check if we have results
+        if not data or "topics" not in data:
+            return []
+        
         topics = []
-        for topic_data in data.get("topic_list", {}).get("topics", []):
+        for topic_data in data.get("topics", []):
+            # Skip if topic doesn't have required fields
+            if not all(k in topic_data for k in ["id", "title", "created_at"]):
+                continue
+                
             topic_id = topic_data["id"]
             topics.append(
                 Topic(
@@ -194,40 +183,68 @@ class DiscourseClient:
                         if topic_data.get("last_posted_at")
                         else None
                     ),
-                    posts_count=topic_data["posts_count"],
-                    views=topic_data["views"],
-                    category_id=topic_data["category_id"],
+                    posts_count=topic_data.get("posts_count", 0),
+                    views=topic_data.get("views", 0),
+                    category_id=topic_data.get("category_id", 0),
                     url=f"{self.base_url}/t/{topic_id}",
                 )
             )
         return topics
 
     async def get_topic_posts(self, topic_id: int) -> list[Post]:
-        """Get all posts for a topic."""
-        url = f"{self.base_url}/t/{topic_id}/posts.json"
-        data = await self._request_with_retry(url)
-
+        """Get all posts for a topic using the post stream."""
+        # First, get the topic details to know total posts
+        topic_url = f"{self.base_url}/t/{topic_id}.json"
+        topic_data = await self._request_with_retry(topic_url)
+        
+        post_stream = topic_data.get("post_stream", {})
+        all_post_ids = post_stream.get("stream", [])
+        
+        if not all_post_ids:
+            return []
+        
         posts = []
-        for post_data in data.get("post_stream", {}).get("posts", []):
-            html_content = post_data["cooked"]
+        chunk_size = 50  # Discourse typically allows 50-100 posts per request
+        
+        # Process posts in chunks
+        for i in range(0, len(all_post_ids), chunk_size):
+            chunk_ids = all_post_ids[i:i + chunk_size]
+            
+            # Fetch posts by IDs
+            url = f"{self.base_url}/t/{topic_id}/posts.json"
+            params = {
+                "post_ids[]": chunk_ids,
+                "include_suggested": False
+            }
+            
+            chunk_data = await self._request_with_retry(url, params=params)
+            
+            # Process each post in the chunk
+            for post_data in chunk_data.get("post_stream", {}).get("posts", []):
+                html_content = post_data["cooked"]
 
-            # Extract all images with context from HTML content
-            images = await self._extract_images_with_context(html_content)
+                # Extract all images with context from HTML content
+                images = await self._extract_images_with_context(html_content)
 
-            # Convert HTML to Markdown
-            markdown_content = md(html_content, heading_style="ATX").strip()
+                # Convert HTML to Markdown
+                markdown_content = md(html_content, heading_style="ATX").strip()
 
-            posts.append(
-                Post(
-                    username=post_data["username"],
-                    created_at=datetime.fromisoformat(
-                        post_data["created_at"].replace("Z", "+00:00")
-                    ),
-                    content=markdown_content,
-                    url=f"{self.base_url}/t/{topic_id}/{post_data['post_number']}",
-                    images=images,
+                posts.append(
+                    Post(
+                        username=post_data["username"],
+                        created_at=datetime.fromisoformat(
+                            post_data["created_at"].replace("Z", "+00:00")
+                        ),
+                        content=markdown_content,
+                        url=f"{self.base_url}/t/{topic_id}/{post_data['post_number']}",
+                        images=images,
+                    )
                 )
-            )
+            
+            # Progress indication for large topics
+            if len(all_post_ids) > 100:
+                console.print(f"  [dim]Fetched {len(posts)}/{len(all_post_ids)} posts...[/dim]")
+        
         return posts
 
     async def _extract_images_with_context(self, html: str) -> list[ImageData]:
@@ -448,7 +465,7 @@ async def scrape_discourse(config: ScrapingConfig):
     console.print("\n[bold blue]Scraping Plan:[/bold blue]")
     console.print(f"[cyan]URL:[/cyan] {base_url}")
     console.print(f"[cyan]Cookie:[/cyan] {cookie_masked}")
-    console.print(f"[cyan]Category:[/cyan] {config.category_id}")
+    console.print(f"[cyan]Category:[/cyan] {config.category}")  # Fixed: was category_id
     console.print(
         f"[cyan]Date Range:[/cyan] {config.start_date} to {config.end_date}"
     )
@@ -478,37 +495,56 @@ async def scrape_discourse(config: ScrapingConfig):
 
             # Fetch all topics in batches
             all_topics = []
-            page = 0
+            page = 1  # Start from page 1, not 0
             batch_size = 5
+            consecutive_empty_pages = 0
 
             while True:
-                page_tasks = [
-                    client.get_category_topics(config.category_id, p)
-                    for p in range(page, page + batch_size)
-                ]
+                # Create tasks for batch of pages
+                page_tasks = []
+                for p in range(page, page + batch_size):
+                    page_tasks.append(
+                        client.get_category_topics(
+                            config.category,  # Fixed: was category_id
+                            config.start_date,
+                            config.end_date,
+                            p
+                        )
+                    )
+                
                 page_results = await asyncio.gather(
                     *page_tasks, return_exceptions=True
                 )
 
-                empty_pages = 0
+                # Process results
+                batch_had_results = False
                 for i, result in enumerate(page_results):
-                    if isinstance(result, Exception) or not result:
-                        empty_pages += 1
+                    current_page = page + i
+                    
+                    if isinstance(result, Exception):
+                        console.print(f"[yellow]Error on page {current_page}: {result}[/yellow]")
                         continue
+                    
+                    if not result:
+                        consecutive_empty_pages += 1
+                    else:
+                        consecutive_empty_pages = 0
+                        batch_had_results = True
+                        all_topics.extend(result)
+                        progress.update(
+                            page_task,
+                            description=f"[cyan]Fetched {len(all_topics)} topics (page {current_page})",
+                        )
 
-                    all_topics.extend(result)
-                    progress.update(
-                        page_task,
-                        description=f"[cyan]Fetched {len(all_topics)} topics (page {page + i})",
-                    )
-
-                    if result and result[-1].created_at < start_dt:
-                        empty_pages = batch_size
-                        break
+                # Stop if we've seen too many empty pages
+                if consecutive_empty_pages >= batch_size:
+                    break
+                
+                # Stop if no results in this batch
+                if not batch_had_results:
+                    break
 
                 page += batch_size
-                if empty_pages >= batch_size:
-                    break
 
             progress.update(
                 page_task,
@@ -516,20 +552,17 @@ async def scrape_discourse(config: ScrapingConfig):
                 description=f"[green]Found {len(all_topics)} topics",
             )
 
-            # Filter by date
-            filtered_topics = [
-                t for t in all_topics if start_dt <= t.created_at <= end_dt
-            ]
+            # No need to filter by date again - search API already did that
             console.print(
-                f"[green]{len(filtered_topics)} topics in date range[/green]"
+                f"[green]Processing {len(all_topics)} topics[/green]"
             )
 
-            if not filtered_topics:
-                console.print("[yellow]No topics in date range[/yellow]")
+            if not all_topics:
+                console.print("[yellow]No topics found[/yellow]")
                 return
 
             topic_task = progress.add_task(
-                "[blue]Processing topics", total=len(filtered_topics)
+                "[blue]Processing topics", total=len(all_topics)
             )
 
             # Process topics concurrently
@@ -548,7 +581,7 @@ async def scrape_discourse(config: ScrapingConfig):
                     )
 
             results = await asyncio.gather(
-                *[process_with_semaphore(topic) for topic in filtered_topics]
+                *[process_with_semaphore(topic) for topic in all_topics]
             )
             console.print(f"[green]Processed {sum(results)} topics[/green]")
 

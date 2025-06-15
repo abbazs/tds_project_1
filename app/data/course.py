@@ -13,7 +13,7 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from app.image_confext import OpenAIImageAnalyzer
+from app.image_context import OpenAIImageAnalyzer
 from app.models import Settings
 from app.utils import print_important
 from app.utils import print_success

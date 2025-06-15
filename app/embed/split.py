@@ -55,14 +55,36 @@ class URLAwareTextSplitter:
         return chunks
 
     def _find_split_point(self, text: str, start: int, end: int) -> int:
-        """Find optimal split point using hierarchical separators"""
-        for separator in self.separators:
-            # Look for separator in the last quarter of the chunk
-            search_start = max(start, end - self.chunk_size // 4)
+        """Find optimal split point prioritizing sentence boundaries unless sentence exceeds chunk_size."""
+        if start >= end or not self.separators:
+            return end
+
+        search_start = start  # Search entire range
+        sentence_separators = [". ", "! ", "? ", ".\n", "!\n", "?\n", "..."]
+        other_separators = [s for s in self.separators if s not in sentence_separators]
+
+        for separator in sentence_separators + other_separators:
             pos = text.rfind(separator, search_start, end)
             if pos > start:
-                return pos + len(separator)
-        return end  # Fallback to hard cut
+                split_point = pos + len(separator)
+
+                # Skip if sentence is too large
+                if separator in sentence_separators:
+                    prev_sentence_end = max(
+                        text.rfind(". ", start, pos),
+                        text.rfind("! ", start, pos),
+                        text.rfind("? ", start, pos),
+                        text.rfind("...", start, pos),
+                    )
+                    if (
+                        prev_sentence_end >= start
+                        and split_point - prev_sentence_end > self.chunk_size
+                    ):
+                        continue
+
+                if split_point - start >= self.chunk_size // 4:
+                    return split_point
+        return end
 
     def _restore_urls(self, chunk: str, url_map: dict) -> str:
         """Restore original URLs from tokens"""

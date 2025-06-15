@@ -1,6 +1,6 @@
-import base64
 from typing import Optional
 
+import numpy as np
 import uvicorn
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -8,9 +8,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pydantic import Field
 
+from app.concise_answer import OpenAIConciseAnswer
 from app.embedder import OpenAIEmbedder
-from app.image_confext import OpenAIImageAnalyzer
+from app.image_context import OpenAIImageAnalyzer
+from app.models import QuestionResponse
 from app.models import Settings
+from pathlib import Path
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("tds_project_1")
+
+EMB=Path("embeddings.npz")
+logger.info(f"Loading embeddings from {EMB}")
+if not EMB.exists():
+    raise FileNotFoundError(f"Embeddings file not found: {EMB}. Please run the embedding script first.")
+_data = np.load(EMB, allow_pickle=True)
+_corpus_emb = _data["embeddings"]  # shape: (N, D)
+_texts = _data["texts"]  # shape: (N,)
+_urls = _data["urls"]
+
+# pre‐compute norms for faster cosine
+_corpus_norm = np.linalg.norm(_corpus_emb, axis=1)
+
+
+def top_k_matches(query_emb: np.ndarray, k: int = 10):
+    # cosine sim = (A⋅B) / (||A|| * ||B||)
+    q_norm = np.linalg.norm(query_emb)
+    sims = (_corpus_emb @ query_emb) / (_corpus_norm * q_norm)
+    idxs = np.argsort(sims)[::-1][:k]
+    return [{"url": _urls[i], "text": _texts[i]} for i in idxs]
+
 
 app = FastAPI(title="TDS May 2025 Project 1 Q&A API", version="1.0.0")
 
@@ -41,48 +73,28 @@ class QuestionRequest(BaseModel):
     )
 
 
-class LinkResponse(BaseModel):
-    url: str
-    text: str
-
-
-class QuestionResponse(BaseModel):
-    answer: str
-    links: list[LinkResponse]
-
-
 async def process_question(request: QuestionRequest) -> QuestionResponse:
     """Process student question and return structured response."""
 
     if request.image:
         aii = OpenAIImageAnalyzer(api_key=settings.api_key)
-        context = aii.analyze_image(request.image.decode("utf-8"))
-    question = f"{request.question} {context}"
+        context = await aii.analyze_image(request.image)
+        question = f"{request.question} {context}"
+    else:
+        question = request.question
     aie = OpenAIEmbedder(api_key=settings.api_key)
-    embeddings = aie.embed_text(question)
+    embeddings = await aie.embed_text(question.strip())
     if not embeddings:
-        raise HTTPException(status_code=500, detail="Failed to generate embeddings")
-
-    # Example processing logic - replace with your actual implementation
-    if "gpt" in question.lower() and "proxy" in question.lower():
         return QuestionResponse(
-            answer="You must use `gpt-3.5-turbo-0125`, even if the AI Proxy only supports `gpt-4o-mini`. Use the OpenAI API directly for this question.",
-            links=[
-                LinkResponse(
-                    url="https://discourse.onlinedegree.iitm.ac.in/t/ga5-question-8-clarification/155939/4",
-                    text="Use the model that's mentioned in the question.",
-                ),
-                LinkResponse(
-                    url="https://discourse.onlinedegree.iitm.ac.in/t/ga5-question-8-clarification/155939/3",
-                    text="My understanding is that you just have to use a tokenizer, similar to what Prof. Anand used, to get the number of tokens and multiply that by the given rate.",
-                ),
-            ],
+            answer="No relevant information found.",
+            links=[],
         )
-
-    # Default response for other questions
-    return QuestionResponse(
-        answer="I'll help you with your question. Please provide more specific details if needed.",
-        links=[],
+    # get top 10 similar passages
+    matches = top_k_matches(embeddings, 10)
+    aic = OpenAIConciseAnswer(api_key=settings.api_key)
+    return await aic.answer(
+        question=question,
+        matches=matches,
     )
 
 
@@ -100,7 +112,8 @@ async def answer_question(request: QuestionRequest):
     ```
     """
     try:
-        return process_question(request)
+        logger.info(f"Received question: {request}")
+        return await process_question(request)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
