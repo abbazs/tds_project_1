@@ -3,7 +3,7 @@ description: "TDS Virtual TA Project Sample (but not the actual evaluation) Ques
 providers:
   - id: http
     config:
-      url: http://localhost:8000/api/ # Replace this with your API endpoint
+      url: https://abbazs-tds-project-1.hf.space/api/ # Replace this with your API endpoint
       method: POST
       headers:
         Content-Type: application/json

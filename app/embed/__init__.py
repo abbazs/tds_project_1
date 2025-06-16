@@ -5,6 +5,7 @@ import rich_click as click
 
 from app.embed import course
 from app.embed import discourse
+from app.embed import stella
 from app.utils import print_error
 from app.utils import print_success
 
@@ -57,6 +58,7 @@ def join_npz(input_files: tuple[Path, ...], output: Path) -> None:
 
 cli.add_command(course.embed, name="course")
 cli.add_command(discourse.embed, name="discourse")
+cli.add_command(stella.embed, name="discourse-stella")
 
 if __name__ == "__main__":
     cli()

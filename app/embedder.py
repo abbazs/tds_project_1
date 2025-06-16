@@ -21,7 +21,7 @@ class OpenAIEmbedder:
         if len(self.request_times) >= 49:  # Stay under 50 RPS
             wait_time = max(0, 1 - (now - self.request_times[0]))
             if wait_time > 0:
-                print_warning("\t\t\t\tWaiting for rate limit reset...")
+                print_warning("\tWaiting for rate limit reset...")
                 await asyncio.sleep(wait_time)
 
         self.request_times.append(now)

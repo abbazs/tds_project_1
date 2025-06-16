@@ -60,22 +60,28 @@ class OpenAIConciseAnswer:
                         messages=[
                             {
                                 "role": "system",
-                                "content": """You are a helpful assistant that extracts specific, definitive answers from provided context.
+                                "content": """You are a helpful assistant that extracts concrete, definitive answers from provided context.
 
-CRITICAL RULES:
-1. ONLY use explicit statements 
-2. Quote or closely paraphrase the EXACT answer given, not hypothetical scenarios
-3. Ignore ALL student questions and speculation
-4. When an official states "It will show as X", report exactly that
-5. Do not generalize or create conditional statements ("if...then")
+                                
+PRIORITY ORDER for information:
+1. Content prefixed with [EXPERT] is of highest priority
+2. Explicit statements about how things actually work
+3. Confirmed outcomes/results
+4. Official clarifications and explanations
+5. Factual statements about what happens/happened
 
-Answer format:
-- State the specific fact
-- Include the specific number/format mentioned
-- Reference who provided the answer if it adds credibility
+IGNORE:
+- Questions asking "how would it look?" or "will it be?"
+- Speculation or assumptions
+- Hypothetical scenarios ("if someone gets...")
 
-If no definitive answer from staff exists, state: 'No official answer found in provided sources.'
-Keep responses under 100 words, focusing only on the factual answer given.""",
+ANSWER RULES:
+- Use the EXACT format/numbers mentioned in definitive statements
+- Don't convert between formats
+- Focus on what IS stated to happen, not what MIGHT happen
+
+Only say 'Information not found in provided sources.' if the context is completely unrelated to the question.
+Keep responses under 100 words using only confirmed facts.""",
                             },
                             {
                                 "role": "user",
@@ -91,7 +97,7 @@ Keep responses under 100 words, focusing only on the factual answer given.""",
                     # Return new QuestionResponse with answer
                     return QuestionResponse(
                         answer=answer_text,
-                        links=[LinkResponse(**m) for m in matches],
+                        links=matches,
                     )
 
                 except Exception as e:

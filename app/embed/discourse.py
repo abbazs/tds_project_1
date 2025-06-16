@@ -1,3 +1,4 @@
+# app/embed/discourse.py - Simplified version
 import asyncio
 import json
 from pathlib import Path
@@ -17,14 +18,9 @@ from rich.progress import TaskProgressColumn
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 
-from app.embed.classifier import ContentClassifier
-from app.embed.classifier import PostType
 from app.embed.split import URLAwareTextSplitter
 from app.embed.utils import concatenate_embeddings
 from app.embed.utils import save_embeddings
-from app.embed.weighter import AcademicRole
-from app.embed.weighter import RoleKeywordWeighter
-from app.embed.weighter import apply_weighting_to_content
 from app.embedder import OpenAIEmbedder
 from app.models import EmbeddingChunk
 from app.models import Settings
@@ -33,29 +29,16 @@ from app.utils import print_error
 
 console = Console()
 
-
-VIP_WEIGHTS = {
-    "s.anand": 3.0,  # Faculty
-    "carlton": 2.5,  # Instructor
-    "iamprasna": 2.5,  # Instructor
-    "jivraj": 2.0,  # TA
-    "21f3002441": 2.0,  # TA (Suchintika)
-    "hritikroshan_hrm": 2.0,  # TA (Hritik)
-    "saransh_saini": 2.0,  # TA (Saransh)
-    # You can add others if needed
+# Simple authority weights - that's it!
+AUTHORITY_USERS = {
+    "s.anand": "FACULTY",
+    "carlton": "INSTRUCTOR",
+    "iamprasna": "INSTRUCTOR",
+    "jivraj": "TEACHING ASSISTANT",
+    "21f3002441": "TEACHING ASSISTANT",
+    "hritikroshan_hrm": "TEACHING ASSISTANT",
+    "saransh_saini": "TEACHING ASSISTANT",
 }
-ROLES = {
-    "s.anand": AcademicRole.FACULTY,
-    "carlton": AcademicRole.INSTRUCTOR,
-    "iamprasna": AcademicRole.INSTRUCTOR,
-    "jivraj": AcademicRole.TA,
-    "21f3002441": AcademicRole.TA,
-    "hritikroshan_hrm": AcademicRole.TA,
-    "saransh_saini": AcademicRole.TA,
-}
-
-CLASSIFIER = ContentClassifier(VIP_WEIGHTS)
-WEIGHTER = RoleKeywordWeighter(VIP_WEIGHTS, ROLES)
 
 
 class PostData(BaseModel):
@@ -77,9 +60,9 @@ async def process_json_file(
     file_path: Path,
     embedder: OpenAIEmbedder,
     splitter: URLAwareTextSplitter,
-    progress: Progress,
+    weighted: bool = False,
 ) -> List[EmbeddingChunk]:
-    """Process single JSON file"""
+    """Process single JSON file with simple authority weighting"""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -88,34 +71,34 @@ async def process_json_file(
         print_error(f"Error processing {file_path}: {e}")
         return []
 
-    post_task = progress.add_task(
-        f" [yellow]Processing file {file_path.stem}", total=len(topic_data.posts)
+    console.print(
+        f" [yellow]Processing file {file_path.stem} with posts {len(topic_data.posts)}"
     )
     chunks = []
+
     for post in topic_data.posts:
         if not post.content.strip():
-            if progress and post_task:
-                progress.update(post_task, advance=1)
+            console.print(f"  [dim] Empty content {post.url}")
             continue
+
         # Add image context inline
         content = post.content
         for img in post.images:
             if (img_url := img.get("url")) and (context := img.get("context")):
                 content = content.replace(img_url, f"{img_url}\n[Image: {context}]")
 
-        post_type = CLASSIFIER.classify_post_type(content, post.username)
-        components = WEIGHTER.get_weighting_components(
-            post.username, content, post_type
-        )
+        # Split first
         text_chunks = splitter.split_text(content)
-        total_chunks = len(text_chunks)
-        if total_chunks > 1:
-            chunk_task = progress.add_task(
-                f"  [dim]Embedding {total_chunks} chunks", total=total_chunks
-            )
-        for _i, chunk_text in enumerate(text_chunks):
-            if components.should_apply:
-                weighted_chunk = apply_weighting_to_content(chunk_text, components)
+
+        for chunk_text in text_chunks:
+            if weighted:
+                # Apply authority weighting to each chunk
+                if post.username in AUTHORITY_USERS:
+                    role = AUTHORITY_USERS[post.username]
+                    weighted_chunk = f"[{role} Response] {chunk_text}"
+                    console.print(f"   [sky_blue1] Added Weight {post.url})")
+                else:
+                    weighted_chunk = chunk_text
             else:
                 weighted_chunk = chunk_text
 
@@ -124,15 +107,69 @@ async def process_json_file(
             if embedding:
                 chunks.append(
                     EmbeddingChunk(
-                        text=content,
+                        text=post.content,  # Store original content
                         url=post.url,
                         embedding=embedding,
                     )
                 )
-            if total_chunks > 1:
-                progress.update(chunk_task, advance=1)
-        if progress and post_task:
-            progress.update(post_task, advance=1)
+
+        console.print(f"  [medium_spring_green] Processed post {post.url})")
+
+    return chunks
+
+
+async def process_json_file2(
+    file_path: Path,
+    embedder: OpenAIEmbedder,
+    splitter: URLAwareTextSplitter,
+) -> List[EmbeddingChunk]:
+    """Process single JSON file with simple authority weighting"""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        topic_data = TopicData(**data)
+    except Exception as e:
+        print_error(f"Error processing {file_path}: {e}")
+        return []
+
+    console.print(
+        f" [yellow]Processing file {file_path.stem} with posts {len(topic_data.posts)}"
+    )
+    chunks = []
+    contents = []
+    for post in topic_data.posts:
+        if not post.content.strip():
+            console.print(f"  [dim] Empty content {post.url}")
+            continue
+
+        # Add image context inline
+        content = post.content
+        for img in post.images:
+            if (img_url := img.get("url")) and (context := img.get("context")):
+                content = content.replace(img_url, f"{img_url}\n[Image: {context}]")
+        if post.username in AUTHORITY_USERS:
+            role = AUTHORITY_USERS[post.username]
+            content = f"[{role}] [EXPERT] {content}"
+            console.print(f"   [sky_blue1] Added Weight {post.url})")
+        content = f"{content}[{post.url}]"
+        contents.append(content)
+        # Split first
+    text_chunks = splitter.split_text("\n".join(contents))
+
+    for chunk_text in text_chunks:
+        embedding = await embedder.embed_text(chunk_text)
+
+        if embedding:
+            chunks.append(
+                EmbeddingChunk(
+                    text=chunk_text,  # Store original content
+                    url=topic_data.topic_url,
+                    embedding=embedding,
+                )
+            )
+
+    console.print(f"  [medium_spring_green] Processed post {post.url})")
+
     return chunks
 
 
@@ -150,25 +187,26 @@ def cli() -> None:
     help="Directory with JSON files",
 )
 @click.option(
-    "--output-file",
+    "--output-dir",
     "-o",
     type=click.Path(path_type=Path),
-    default="embeddings/discourse.npz",
+    default="embeddings",
     help="Output embeddings file",
 )
 @click.option("--chunk-size", default=1500, help="Max chunk size")
 @click.option("--chunk-overlap", default=200, help="Chunk overlap")
 def embed(
-    input_dir: Path, output_file: Path, chunk_size: int, chunk_overlap: int
+    input_dir: Path, output_dir: Path, chunk_size: int, chunk_overlap: int
 ) -> None:
-    """Embed Discourse JSON files using Gemini"""
+    """Embed Discourse JSON files with simple authority weighting"""
 
     try:
         settings = Settings()
     except ValidationError as e:
         error_exit(f"Config error: {e}")
 
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir.joinpath("discourse.npz")
 
     async def run():
         console.print("[bold blue]🔍 Analyzing input directory...[/bold blue]")
@@ -197,6 +235,9 @@ def embed(
         console.print(f"📏 Total size: {total_size:.2f} MB")
         console.print(f"⚙️  Chunk size: {chunk_size} chars")
         console.print(f"🔗 Chunk overlap: {chunk_overlap} chars")
+        console.print(
+            f"👑 Authority weighting: Enabled for {len(AUTHORITY_USERS)} users"
+        )
         console.print(f"💾 Output: {output_file}")
 
         if not click.confirm("\n🚀 Continue with embedding?", default=True):
@@ -223,7 +264,8 @@ def embed(
 
             for file_path in json_files:
                 progress.update(task, description=f"[cyan]Processing {file_path.name}")
-                indi_file = output_file.parent.joinpath(file_path.stem + ".npz")
+                indi_file = output_dir.joinpath(file_path.stem + ".npz")
+
                 if indi_file.exists():
                     console.print(
                         f"[yellow]Skipping existing file: {indi_file}[/yellow]"
@@ -231,9 +273,11 @@ def embed(
                     npz_files.append(indi_file)
                     progress.update(task, advance=1)
                     continue
-                chunks = await process_json_file(
-                    file_path, embedder, splitter, progress
-                )
+
+                # chunks = await process_json_file(
+                #     file_path, embedder, splitter
+                # )
+                chunks = await process_json_file2(file_path, embedder, splitter)
                 save_embeddings(chunks=chunks, output_path=indi_file)
                 npz_files.append(indi_file)
                 progress.update(task, advance=1)

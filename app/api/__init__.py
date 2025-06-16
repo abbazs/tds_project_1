@@ -1,3 +1,5 @@
+import logging
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -13,20 +15,20 @@ from app.embedder import OpenAIEmbedder
 from app.image_context import OpenAIImageAnalyzer
 from app.models import QuestionResponse
 from app.models import Settings
-from pathlib import Path
-import logging
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger("tds_project_1")
 
-EMB=Path("embeddings.npz")
+EMB = Path("pweighted.npz")
 logger.info(f"Loading embeddings from {EMB}")
 if not EMB.exists():
-    raise FileNotFoundError(f"Embeddings file not found: {EMB}. Please run the embedding script first.")
+    raise FileNotFoundError(
+        f"Embeddings file not found: {EMB}. Please run the embedding script first."
+    )
 _data = np.load(EMB, allow_pickle=True)
 _corpus_emb = _data["embeddings"]  # shape: (N, D)
 _texts = _data["texts"]  # shape: (N,)
@@ -92,10 +94,11 @@ async def process_question(request: QuestionRequest) -> QuestionResponse:
     # get top 10 similar passages
     matches = top_k_matches(embeddings, 10)
     aic = OpenAIConciseAnswer(api_key=settings.api_key)
-    return await aic.answer(
+    resp = await aic.answer(
         question=question,
         matches=matches,
     )
+    return resp
 
 
 @app.post("/api/", response_model=QuestionResponse)
